@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Secrets & generated material (NEVER commit)
+*.key
+*.pem
+*.p12
+*.pfx
+!**/ca/.gitkeep
+security/certs/**
+security/keys/**
+*.crt
+!docs/**/*.crt
+
+# Runtime data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+logs/
+server/*.db
+received/
+downloads/
+*.log
+*.jsonl
+
+# Client local storage (encrypted, but machine-specific)
+client_storage/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Benchmark outputs
+benchmarks/out/
+results/*.csv
+charts/*.png

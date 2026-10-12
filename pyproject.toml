@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campus-secure-messaging"
+version = "0.1.0"
+description = "Campus Secure Messaging and File Sharing System (CSCP protocol over TLS 1.3)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aesha Singh" }]
+
+dependencies = [
+    "msgpack>=1.0.7",
+    "PyYAML>=6.0",
+    "cryptography>=42.0",
+    "argon2-cffi>=23.1",
+    "pyotp>=2.9",
+    "zeroconf>=0.131",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+client = ["PyQt6>=6.6", "qasync>=0.27"]
+admin = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "jinja2>=3.1", "prometheus-client>=0.20", "python-multipart>=0.0.9", "itsdangerous>=2.2"]
+bench = ["matplotlib>=3.8", "numpy>=1.26"]
+antivirus = ["clamd>=1.0.2"]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.98",
+    "mypy>=1.9",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+cscp-server = "server.main:main"
+
+[tool.setuptools]
+packages = ["protocol", "server", "client", "admin", "security"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+filterwarnings = ["error::DeprecationWarning"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "ASYNC"]
+ignore = ["S101"]  # allow assert in tests
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
