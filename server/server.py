@@ -39,7 +39,7 @@ from server.manager import ConnectionManager
 from server.metrics import ServerMetrics
 from server.rates import RateLimiter
 from server.session import Session
-from server.storage import InMemoryStore
+from server.storage import InMemoryStore, MessageStore
 
 _SETTLE_SECONDS = 0.1  # allow notification frames to reach writer queues
 
@@ -94,10 +94,11 @@ class CSCPServer:
         auth_userdb: str | None = None,
         auth: Authenticator | None = None,
         secret: bytes | None = None,
+        store: MessageStore | None = None,
     ) -> None:
         self.cfg = cfg
         self.metrics = ServerMetrics()
-        self.store = InMemoryStore()  # production SQLite store swapped in messaging layer
+        self.store = store if store is not None else InMemoryStore()
         self.manager = ConnectionManager()
         self.rate = RateLimiter(cfg.rate)
         self.secret = secret if secret is not None else secrets.token_bytes(32)

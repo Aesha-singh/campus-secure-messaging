@@ -13,6 +13,7 @@ import signal
 import sys
 from pathlib import Path
 
+from messaging.store import SQLiteMessageStore
 from server.config import Config
 from server.logging_setup import get_logger, setup_logging
 from server.server import CSCPServer
@@ -49,12 +50,18 @@ async def amain(args: argparse.Namespace) -> int:
     cfg = Config.from_yaml(args.config)
     setup_logging(level=cfg.logging.level, json=cfg.logging.json, file=cfg.logging.file, stderr=cfg.logging.stderr)
 
+    # Durable message store (offline queue + history + unread) is the single
+    # disk-backed persistence edge; everything else lives in RAM.
+    store = SQLiteMessageStore(cfg.storage.db_path)
+    await store.init()
+
     secret = await asyncio.to_thread(lambda: _resolve_secret(args.secret_env))
     server = CSCPServer(
         cfg,
         auth_backend=args.auth if args.auth is not None else cfg.auth.backend,
         auth_userdb=args.userdb,
         secret=secret,
+        store=store,
     )
 
     loop = asyncio.get_running_loop()
@@ -75,6 +82,7 @@ async def amain(args: argparse.Namespace) -> int:
 
     await shutdown_requested.wait()
     await server.shutdown()
+    await store.close()
     log.info("exiting")
     return 0
 

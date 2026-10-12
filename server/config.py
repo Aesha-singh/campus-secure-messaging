@@ -174,12 +174,14 @@ class RateConfig:
 class StorageConfig:
     db_path: str = "data/campus.db"
     wal: bool = True
+    history_limit: int = 200  # max messages returned for one SYNC_REQ
 
     @classmethod
     def from_mapping(cls, m: Mapping[str, Any]) -> StorageConfig:
         return cls(
             db_path=_resolve(str(m.get("db_path", "data/campus.db"))),
             wal=bool(m.get("wal", True)),
+            history_limit=max(1, int(m.get("history_limit", 200))),
         )
 
 

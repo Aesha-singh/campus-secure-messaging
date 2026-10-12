@@ -23,6 +23,7 @@ from protocol.messages import (
 from server.auth import StubAuthenticator
 from server.config import Config
 from server.server import CSCPServer
+from server.storage import MessageStore
 
 ServerFixture = Callable[..., Awaitable[tuple[CSCPServer, int]]]
 
@@ -116,6 +117,7 @@ async def running_server() -> ServerFixture:
         *,
         users: dict[str, str] | None = None,
         secret: bytes | None = None,
+        store: MessageStore | None = None,
     ) -> tuple[CSCPServer, int]:
         cfg = cfg or Config()
         cfg.net.enable_v4 = True
@@ -126,6 +128,7 @@ async def running_server() -> ServerFixture:
             cfg,
             auth=StubAuthenticator(users or {"alice": "sa", "bob": "sb"}),
             secret=secret or b"k" * 32,
+            store=store,
         )
         await srv.start()
         port = srv.listeners[0].server.sockets[0].getsockname()[1]

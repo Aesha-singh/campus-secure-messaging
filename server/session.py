@@ -54,13 +54,17 @@ from protocol.messages import (
     Disconnect,
     Error,
     Hello,
+    MarkRead,
     Message,
     MsgDirect,
     MsgGroup,
     Ping,
     Pong,
     Presence,
+    SyncEnd,
+    SyncReq,
     Typing,
+    Unread,
     decode_message,
     to_frame,
 )
@@ -68,6 +72,7 @@ from protocol.replay import ReplayGuard
 from server.auth import issue_session
 from server.context import ServerContext
 from server.manager import Peer
+from server.storage import convo_key
 
 _PING_NONCE_LEN = 8
 _SENTINEL: Final = object()
@@ -100,6 +105,8 @@ _LEGAL: dict[SessionState, frozenset[MessageType]] = {
             MessageType.FILE_CHUNK,
             MessageType.FILE_DONE,
             MessageType.FILE_RESUME,
+            MessageType.SYNC_REQ,
+            MessageType.MARK_READ,
             MessageType.PING,
             MessageType.PONG,
             MessageType.ERROR,
@@ -402,11 +409,19 @@ class Session:
         )
         # Remote presence so contacts see us come online.
         await self.ctx.manager.publish_presence(_as_peer(self), PresenceState.ONLINE)
-        # Flush anything queued while we were away.
+        # Flush anything queued while we were away, then a fresh unread summary.
         pending = await self.ctx.store.take_offline(self.user_id)
         for queued in pending:
             await self.send(queued)
-        log.info("login_ok", extra={"connection_id": self.connection_id, "user_id": self.user_id})
+        await self._send_unread()
+        log.info(
+            "login_ok",
+            extra={
+                "connection_id": self.connection_id,
+                "user_id": self.user_id,
+                "offline_replay": len(pending),
+            },
+        )
 
     async def _on_ping(self, frame: Frame, msg: Ping) -> None:  # noqa: ARG002
         self._pending_pings.pop(msg.nonce, None)
@@ -433,12 +448,20 @@ class Session:
             await self._send_error(ErrorCode.TOO_LARGE, "message too large", fatal=False)
             return
         self.ctx.metrics.record_message(direct=True)
+
+        convo = convo_key("dm", msg.sender_id, msg.recipient_id)
+        # Persist every accepted direct message so history/sync can replay it
+        # (the sorted-pair convo id collapses a two-user thread into one spine).
+        await self.ctx.store.save_message("dm", convo, msg)
+
         recipient = self.ctx.manager.session_for(msg.recipient_id)
         if recipient is not None:
             await recipient.send(msg)
             await self._send_ack(frame.sequence, msg.msg_id, DeliveryStatus.DELIVERED)
         else:
+            # Recipient is offline: queue for flush-on-login and badge the convo.
             await self.ctx.store.enqueue_offline(msg.recipient_id, msg)
+            await self.ctx.store.bump_unread(msg.recipient_id, convo)
             await self._send_ack(frame.sequence, msg.msg_id, DeliveryStatus.SENT)
         log.info(
             "msg_direct",
@@ -447,6 +470,7 @@ class Session:
                 "from": msg.sender_id,
                 "to": msg.recipient_id,
                 "delivered": recipient is not None,
+                "convo_id": convo,
             },
         )
 
@@ -460,7 +484,17 @@ class Session:
             await self._send_error(ErrorCode.FORBIDDEN, "not a member of channel", fatal=False)
             return
         self.ctx.metrics.record_message(group=True)
+
+        convo = convo_key("channel", msg.channel_id)
+        await self.ctx.store.save_message("channel", convo, msg)
         await self.ctx.manager.broadcast_channel(msg.channel_id, msg, exclude=self.user_id)
+
+        # Offline members get an unread badge; when they next log in a
+        # client-side SYNC_REQ pulls the thread via history replay.
+        online = set(self.ctx.manager.online_ids())
+        for member in self.ctx.manager.channel_members(msg.channel_id):
+            if member != self.user_id and member not in online:
+                await self.ctx.store.bump_unread(member, convo)
         await self._send_ack(frame.sequence, msg.msg_id, DeliveryStatus.SENT)
 
     async def _on_typing(self, frame: Frame, msg: Typing) -> None:  # noqa: ARG002
@@ -479,6 +513,48 @@ class Session:
 
     async def _on_ack(self, frame: Frame, msg: Ack) -> None:  # noqa: ARG002
         log.debug("ack", extra={"connection_id": self.connection_id, "ack_seq": msg.ack_seq, "msg_id": msg.msg_id})
+
+    async def _on_sync_req(self, frame: Frame, msg: SyncReq) -> None:  # noqa: ARG002
+        """Replay history for a conversation as normal message frames + SyncEnd."""
+        self._require_active()
+        assert self.user_id is not None
+        limit = msg.limit or self.ctx.cfg.storage.history_limit
+        batch = await self.ctx.store.history(
+            self.user_id,
+            msg.convo_kind,
+            msg.convo_id,
+            since_ts=msg.since_ts,
+            limit=limit,
+        )
+        for queued in batch:
+            await self.send(queued)
+        await self.send(SyncEnd(convo_kind=msg.convo_kind, convo_id=msg.convo_id, count=len(batch)))
+        # Replaying a thread means it's now on screen: clear its badge.
+        await self.ctx.store.clear_unread(self.user_id, msg.convo_id)
+        log.debug(
+            "sync",
+            extra={
+                "connection_id": self.connection_id,
+                "user_id": self.user_id,
+                "convo_id": msg.convo_id,
+                "count": len(batch),
+            },
+        )
+
+    async def _on_mark_read(self, frame: Frame, msg: MarkRead) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        await self.ctx.store.clear_unread(self.user_id, msg.convo_id)
+        await self._send_unread()
+        log.debug(
+            "mark_read",
+            extra={"connection_id": self.connection_id, "convo_id": msg.convo_id},
+        )
+
+    async def _send_unread(self) -> None:
+        assert self.user_id is not None
+        counts = await self.ctx.store.unread_counts(self.user_id)
+        await self.send(Unread(convo_unread=counts, server_time=time.time()))
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -562,4 +638,6 @@ _HANDLERS: dict[MessageType, Any] = {
     MessageType.TYPING: Session._on_typing,
     MessageType.PRESENCE: Session._on_presence,
     MessageType.ACK: Session._on_ack,
+    MessageType.SYNC_REQ: Session._on_sync_req,
+    MessageType.MARK_READ: Session._on_mark_read,
 }

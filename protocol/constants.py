@@ -67,6 +67,10 @@ class MessageType(IntEnum):
     ACK = 0x12
     TYPING = 0x13
     PRESENCE = 0x14
+    SYNC_REQ = 0x15
+    SYNC_END = 0x16
+    UNREAD = 0x17
+    MARK_READ = 0x18
 
     # 0x2_ -- file transfer
     FILE_OFFER = 0x20

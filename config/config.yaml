@@ -58,6 +58,7 @@ rate:
 storage:
   db_path: "data/campus.db"
   wal: true
+  history_limit: 200                # max messages replayed per SYNC_REQ
 
 files:
   enabled: true

@@ -68,6 +68,7 @@ _ENCODERS: dict[str, Any] = {
     "enum": lambda v: int(v),
     "list_int": lambda v: [int(x) for x in v],
     "list_str": lambda v: [str(x) for x in v],
+    "map_str_int": lambda v: {str(k): int(x) for k, x in v.items()},
 }
 
 
@@ -107,6 +108,15 @@ def _decode_value(value: Any, spec: FieldSpec, name: str) -> Any:
             if not isinstance(value, (list, tuple)):
                 raise MessageValidationError(f"{name}: expected list[str]")
             return [str(x) for x in value]
+        if kind == "map_str_int":
+            if not isinstance(value, dict):
+                raise MessageValidationError(f"{name}: expected dict[str, int]")
+            out: dict[str, int] = {}
+            for k, x in value.items():
+                if not isinstance(x, int) or isinstance(x, bool):
+                    raise MessageValidationError(f"{name}[{k!r}]: expected int")
+                out[str(k)] = x
+            return out
     except (ValueError, TypeError) as exc:
         raise MessageValidationError(f"{name}: {exc}") from exc
     raise MessageValidationError(f"{name}: unknown field kind {kind!r}")
@@ -378,6 +388,77 @@ class Presence(Message):
 
 
 # --------------------------------------------------------------------------- #
+# Sync / offline delivery
+# --------------------------------------------------------------------------- #
+@dataclass
+class SyncReq(Message):
+    """Request chat history for a conversation since a point in time.
+
+    The server replies by replaying each stored message as its original frame
+    type (``MsgDirect``/``MsgGroup``), terminated by a :class:`SyncEnd` marker.
+    Reuse of the normal message codecs keeps offline delivery byte-identical to
+    live delivery -- the client cannot tell (or care) which path a message took.
+    """
+
+    TYPE: ClassVar[MessageType] = MessageType.SYNC_REQ
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "convo_kind": FieldSpec("str", required=True),  # "dm" | "channel"
+        "convo_id": FieldSpec("str", required=True),    # dm:u_a|u_b  or  ch:<id>
+        "since_ts": FieldSpec("float", default=0.0),
+        "limit": FieldSpec("int", default=0),
+    }
+
+    convo_kind: str
+    convo_id: str
+    since_ts: float = 0.0
+    limit: int = 0
+
+
+@dataclass
+class SyncEnd(Message):
+    """Sentinel marking the end of a history/sync batch."""
+
+    TYPE: ClassVar[MessageType] = MessageType.SYNC_END
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "convo_kind": FieldSpec("str", required=True),
+        "convo_id": FieldSpec("str", required=True),
+        "count": FieldSpec("int", required=True),
+    }
+
+    convo_kind: str
+    convo_id: str
+    count: int
+
+
+@dataclass
+class Unread(Message):
+    """Unread-message summary sent on login and after a MarkRead."""
+
+    TYPE: ClassVar[MessageType] = MessageType.UNREAD
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "convo_unread": FieldSpec("map_str_int", required=True),
+        "server_time": FieldSpec("float", required=True),
+    }
+
+    convo_unread: dict[str, int]
+    server_time: float
+
+
+@dataclass
+class MarkRead(Message):
+    """Client tells the server a conversation was rendered (clears unread counter)."""
+
+    TYPE: ClassVar[MessageType] = MessageType.MARK_READ
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "convo_kind": FieldSpec("str", required=True),
+        "convo_id": FieldSpec("str", required=True),
+    }
+
+    convo_kind: str
+    convo_id: str
+
+
+# --------------------------------------------------------------------------- #
 # File transfer
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -552,6 +633,10 @@ _ALL_MESSAGES = (
     Ack,
     Typing,
     Presence,
+    SyncReq,
+    SyncEnd,
+    Unread,
+    MarkRead,
     FileOffer,
     FileAccept,
     FileChunk,
@@ -606,11 +691,22 @@ def decode_message(frame: Frame) -> Message:
         UnknownMessageTypeError: Frame type is not in the registry.
         MessageValidationError: Payload is not a valid map for that type.
     """
-    cls = REGISTRY.get(frame.msg_type)
+    return decode_message_payload(frame.msg_type, frame.payload)
+
+
+def decode_message_payload(msg_type: MessageType, payload: bytes) -> Message:
+    """Decode a stored payload given its type tag (used by the message stores).
+
+    History/offline stores persist ``msg.TYPE`` alongside ``msg.to_payload()``
+    so brokered messages can be reconstructed without re-encoding headers --
+    offline replay therefore produces the *same validated message objects* the
+    live relay path produces.
+    """
+    cls = REGISTRY.get(msg_type)
     if cls is None:
-        raise UnknownMessageTypeError(f"no handler for {frame.msg_type!r}")
+        raise UnknownMessageTypeError(f"no handler for {msg_type!r}")
     try:
-        decoded = msgpack.unpackb(frame.payload, raw=False, strict_map_key=False)
+        decoded = msgpack.unpackb(payload, raw=False, strict_map_key=False)
     except Exception as exc:  # noqa: BLE001 -- normalise msgpack errors
         raise MessageValidationError(f"undecodable payload: {exc}") from exc
     return cls.from_map(decoded)

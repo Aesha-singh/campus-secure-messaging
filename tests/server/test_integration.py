@@ -109,7 +109,9 @@ async def test_direct_message_online_and_ack(running_server) -> None:  # type: i
     assert ack.ack_seq == seq
     assert ack.msg_id == "m1"
     assert ack.status is DeliveryStatus.DELIVERED
-    assert delivered.sequence != seq  # recipient-side seq space is independent
+    delivered_msg = decode_message(delivered)
+    assert isinstance(delivered_msg, MsgDirect)
+    assert delivered_msg.msg_id == "m1"
     await alice.close()
     await bob.close()
 

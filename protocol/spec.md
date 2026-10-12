@@ -126,6 +126,10 @@ Grouped by high nibble so a receiver can classify cheaply.
 | | `0x12` | `ACK` | C↔S | ack_seq, msg_id, delivery status |
 | | `0x13` | `TYPING` | C↔S | scope, target, typing state |
 | | `0x14` | `PRESENCE` | C↔S | user_id, state, last_seen |
+| | `0x15` | `SYNC_REQ` | C→S | convo_kind, convo_id, since_ts, limit |
+| | `0x16` | `SYNC_END` | S→C | convo_kind, convo_id, count |
+| | `0x17` | `UNREAD` | S→C | convo_unread map, server_time |
+| | `0x18` | `MARK_READ` | C→S | convo_kind, convo_id |
 | File | `0x20` | `FILE_OFFER` | C↔S | name, size, sha256, mime, wrapped_key |
 | | `0x21` | `FILE_ACCEPT` | C↔S | accepted, resume offset |
 | | `0x22` | `FILE_CHUNK` | C↔S | transfer_id, index, encrypted data |
@@ -215,6 +219,33 @@ Client                                   Server
   drop.
 * **Replay protection** — the server rejects a `sequence` it has already seen on
   a connection, and higher layers check message timestamps within a skew window.
+* **Server-side persistence / offline buffering** — every accepted `MSG_DIRECT`
+  and `MSG_GROUP` is stored (SQLite in production, WAL journal) keyed by a
+  canonical `convo_id`:
+
+  ```
+  dm:u_alice|u_bob          (sender, recipient sorted alphabetically)
+  ch:<channel_id>
+  ```
+
+  A direct message whose peer is offline is ACKed `SENT` (persisted, not
+  delivered) and queued; at the peer's next login the server replays each queued
+  frame (BYTE-IDENTICAL to live delivery) followed by an `UNREAD` badge summary.
+
+### Sync / catch-up flow
+
+```
+   Client                    Server
+     |-- SYNC_REQ ----------------->|   convo_kind="dm|channel", convo_id, since_ts, limit
+     |<----- MSG_DIRECT ... --------|   stored history replayed as NORMAL frames
+     |<----- SYNC_END(count=N) -----|   sentinel; client can now clear its badge
+     |-- MARK_READ ----------------->|   convo_id read locally
+     |<------- UNREAD --------------|   0/remaining unread as confirmation
+```
+
+Live delivery and history replay transport *identical* frame types, so a client
+cannot distinguish (and does not care about) the two paths. History queries are
+watermarked (`since_ts`) for pagination and capped by `limit`/server policy.
 
 ---
 
@@ -243,6 +274,9 @@ E2EE AEAD (end-to-end). See `security/threat_model.md` for the STRIDE analysis.
 | Framing / decoder | `protocol/codec.py` |
 | Messages & serialization | `protocol/messages.py` |
 | Errors | `protocol/errors.py` |
+| Roles, presence, channels | `server/manager.py` |
+| Offline queue, history, unread | `server/storage.py` (Protocol + RAM) / `messaging/store.py` (SQLite) |
+| Messaging session handlers | `server/session.py` |
 
 Tests: `tests/protocol/` (boundaries, malformed, oversized, truncated,
 coalesced, replay, and Hypothesis fuzzing).
