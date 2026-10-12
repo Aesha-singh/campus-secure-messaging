@@ -13,11 +13,9 @@ with timestamp checks at the message layer this forms replay defence
 
 from __future__ import annotations
 
-from protocol.errors import CscpError
+from protocol.errors import ReplayError
 
-
-class ReplayError(CscpError):
-    """A frame's sequence number was seen before (replay / duplication)."""
+__all__ = ["ReplayError", "ReplayGuard"]
 
 
 class ReplayGuard:

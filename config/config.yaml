@@ -1,0 +1,79 @@
+# CSCP server configuration.
+#
+# Secrets policy: NO secrets in this file. Private-key / admin password values
+# are supplied via files on disk (restricted permissions) or environment
+# variables (see `admin_password_env` and `make certs`).
+
+server_name: "campus-cscp-1"
+
+net:
+  enable_v4: true
+  host_v4: "0.0.0.0"
+  enable_v6: true
+  host_v6: "::"
+  port: 9443
+  mdns_name: "cscp-campus.local"
+
+tls:
+  certfile: "security/certs/server.crt"
+  keyfile: "security/certs/server.key"
+  ca_file: "security/certs/ca.crt"
+  require_client_cert: true      # mutual TLS: clients present CA-signed certs
+  min_version: "TLSv1_3"
+  ciphers: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+
+limits:
+  max_connections: 2000
+  max_frame_size: 16777216        # 16 MiB, same as protocol.MAX_FRAME_SIZE
+  write_queue_size: 512           # bounded per-connection outbound queue
+  close_timeout: 3.0
+  max_username_len: 64
+  max_message_bytes: 524288
+
+heartbeat:
+  ping_interval: 30.0
+  idle_timeout: 90.0
+  max_missed_pings: 3
+
+auth:
+  max_attempts: 5
+  lockout_seconds: 300
+  token_ttl_seconds: 300
+  session_resume_ttl_seconds: 604800
+  totp_enabled: true
+
+rate:
+  per_ip:
+    capacity: 120
+    refill_per_sec: 40
+  per_user:
+    capacity: 300
+    refill_per_sec: 100
+  auth_window_seconds: 300
+  auth_max_per_window: 20
+
+storage:
+  db_path: "data/campus.db"
+  wal: true
+
+files:
+  enabled: true
+  max_size_bytes: 209715200       # 200 MiB
+  quota_bytes: 2147483648         # 2 GiB per user
+  ttl_seconds: 604800             # 7 days
+  chunk_size: 65536               # 64 KiB
+  relay_encrypted_blobs_dir: "data/blobs"
+  allowed_mime:
+    - "application/pdf"
+    - "image/png"
+    - "image/jpeg"
+    - "text/plain"
+    - "application/zip"
+
+logging:
+  level: "INFO"
+  json: true
+  file: "logs/server.log"
+  stderr: true
+
+admin_password_env: "CSCP_ADMIN_PASSWORD"
