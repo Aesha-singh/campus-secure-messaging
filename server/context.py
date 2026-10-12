@@ -11,6 +11,7 @@ from server.manager import ConnectionManager
 from server.metrics import ServerMetrics
 from server.rates import RateLimiter
 from server.storage import MessageStore
+from server.transfer import FileTransferManager
 
 
 @dataclass(slots=True)
@@ -24,4 +25,5 @@ class ServerContext:
     store: MessageStore
     metrics: ServerMetrics
     rate: RateLimiter
+    transfers: FileTransferManager
     log: logging.Logger

@@ -40,6 +40,7 @@ from server.metrics import ServerMetrics
 from server.rates import RateLimiter
 from server.session import Session
 from server.storage import InMemoryStore, MessageStore
+from server.transfer import FileTransferManager
 
 _SETTLE_SECONDS = 0.1  # allow notification frames to reach writer queues
 
@@ -101,6 +102,7 @@ class CSCPServer:
         self.store = store if store is not None else InMemoryStore()
         self.manager = ConnectionManager()
         self.rate = RateLimiter(cfg.rate)
+        self.transfers = FileTransferManager(cfg.files)
         self.secret = secret if secret is not None else secrets.token_bytes(32)
         self.auth = (
             auth
@@ -120,6 +122,7 @@ class CSCPServer:
             store=self.store,
             metrics=self.metrics,
             rate=self.rate,
+            transfers=self.transfers,
             log=logging.getLogger("cscp.server"),
         )
         self.sessions: dict[int, Session] = {}

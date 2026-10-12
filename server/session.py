@@ -53,6 +53,11 @@ from protocol.messages import (
     AuthReq,
     Disconnect,
     Error,
+    FileAccept,
+    FileChunk,
+    FileDone,
+    FileOffer,
+    FileResume,
     Hello,
     MarkRead,
     Message,
@@ -557,6 +562,101 @@ class Session:
         await self.send(Unread(convo_unread=counts, server_time=time.time()))
 
     # ------------------------------------------------------------------ #
+    # File transfer (store-and-forward relay)
+    # ------------------------------------------------------------------ #
+    async def _on_file_offer(self, frame: Frame, msg: FileOffer) -> None:
+        self._require_active()
+        error, transfer = await self.ctx.transfers.offer(_as_peer(self), msg)
+        if error is not None:
+            await self._send_error(
+                ErrorCode.QUOTA_EXCEEDED if error == "quota_exceeded" else ErrorCode.TOO_LARGE,
+                f"file offer rejected: {error}",
+                fatal=False,
+            )
+            return
+        recipient = self.ctx.manager.session_for(msg.recipient_id)
+        if recipient is not None:
+            await recipient.send(msg)
+            await self._send_ack(frame.sequence, None, DeliveryStatus.DELIVERED)
+        else:
+            await self.ctx.store.enqueue_offline(msg.recipient_id, msg)
+            await self._send_ack(frame.sequence, None, DeliveryStatus.SENT)
+        log.info(
+            "file_offer_relayed",
+            extra={"transfer_id": msg.transfer_id, "to": msg.recipient_id, "size": msg.size},
+        )
+
+    async def _on_file_accept(self, frame: Frame, msg: FileAccept) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        transfer = await self.ctx.transfers.accept(msg.transfer_id) if msg.accepted else None
+        if transfer is None and not msg.accepted:
+            transfer = await self.ctx.transfers.refuse(msg.transfer_id, _as_peer(self))
+        if transfer is None:
+            await self._send_error(ErrorCode.NOT_FOUND, "unknown transfer", fatal=False)
+            return
+        sender = self.ctx.manager.session_for(transfer.sender_id)
+        if sender is not None:
+            await sender.send(msg, flags=FrameFlags.RESPONSE)
+        log.info(
+            "file_accept_relayed",
+            extra={"transfer_id": msg.transfer_id, "accepted": msg.accepted, "by": self.user_id},
+        )
+
+    async def _on_file_chunk(self, frame: Frame, msg: FileChunk) -> None:
+        self._require_active()
+        error, transfer, watermark = await self.ctx.transfers.write_chunk(msg, _as_peer(self))
+        if error != "":
+            await self._send_error(ErrorCode.TRANSFER_ABORTED, f"chunk rejected: {error}", fatal=False)
+            return
+        assert transfer is not None
+        # Store-and-forward: drain any newly-contiguous prefix to the recipient.
+        recipient = self.ctx.manager.session_for(transfer.recipient_id)
+        if recipient is not None:
+            await self.ctx.transfers.forward_to(transfer.transfer_id, recipient)
+        # Cumulative storage watermark ACK (sliding-window flow control).
+        await self._send_ack(frame.sequence, f"{transfer.transfer_id}:w{watermark}", DeliveryStatus.DELIVERED)
+
+    async def _on_file_done(self, frame: Frame, msg: FileDone) -> None:
+        self._require_active()
+        error, transfer = await self.ctx.transfers.on_done(msg, _as_peer(self))
+        if error != "":
+            await self._send_error(ErrorCode.TRANSFER_ABORTED, f"complete rejected: {error}", fatal=False)
+            return
+        assert transfer is not None
+        recipient = self.ctx.manager.session_for(transfer.recipient_id)
+        if recipient is not None:
+            await recipient.send(msg)
+        await self._send_ack(frame.sequence, transfer.transfer_id, DeliveryStatus.DELIVERED)
+        log.info(
+            "transfer_complete",
+            extra={"transfer_id": msg.transfer_id, "sha256": msg.sha256[:16]},
+        )
+
+    async def _on_file_resume(self, frame: Frame, msg: FileResume) -> None:  # noqa: ARG002
+        self._require_active()
+        transfer = self.ctx.transfers.transfers.get(msg.transfer_id)
+        if transfer is None:
+            await self._send_error(ErrorCode.NOT_FOUND, "unknown transfer", fatal=False)
+            return
+        assert self.user_id is not None
+        # Recipient resumes a download: re-stream from its own watermark.
+        if self.user_id == transfer.recipient_id:
+            sent, error = await self.ctx.transfers.pull_from_watermark(
+                msg.transfer_id, _as_peer(self), msg.last_ack_index + 1
+            )
+            if error != "":
+                await self._send_error(ErrorCode.TRANSFER_ABORTED, f"resume failed: {error}", fatal=False)
+                return
+            await self._send_ack(frame.sequence, f"{msg.transfer_id}:r{sent}", DeliveryStatus.DELIVERED)
+        else:  # sender reconnecting: report current storage watermark so it may resume upload.
+            await self._send_ack(
+                frame.sequence,
+                f"{msg.transfer_id}:w{transfer.storage_watermark}",
+                DeliveryStatus.DELIVERED,
+            )
+
+    # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
     def _require_active(self) -> None:
@@ -640,4 +740,9 @@ _HANDLERS: dict[MessageType, Any] = {
     MessageType.ACK: Session._on_ack,
     MessageType.SYNC_REQ: Session._on_sync_req,
     MessageType.MARK_READ: Session._on_mark_read,
+    MessageType.FILE_OFFER: Session._on_file_offer,
+    MessageType.FILE_ACCEPT: Session._on_file_accept,
+    MessageType.FILE_CHUNK: Session._on_file_chunk,
+    MessageType.FILE_DONE: Session._on_file_done,
+    MessageType.FILE_RESUME: Session._on_file_resume,
 }
