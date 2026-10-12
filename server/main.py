@@ -28,7 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(Path(__file__).resolve().parent.parent / "config" / "config.yaml"),
         help="path to config.yaml",
     )
-    parser.add_argument("--auth", type=str, default="stub", choices=["stub"], help="auth backend (stub=dev only)")
+    parser.add_argument(
+        "--auth",
+        type=str,
+        default=None,
+        choices=["stub", "argon2"],
+        help="auth backend (stub=dev only; default = config auth.backend)",
+    )
+    parser.add_argument("--userdb", type=str, default=None, help="path to users.yaml (argon2 backend)")
     parser.add_argument(
         "--secret-env",
         type=str,
@@ -43,7 +50,12 @@ async def amain(args: argparse.Namespace) -> int:
     setup_logging(level=cfg.logging.level, json=cfg.logging.json, file=cfg.logging.file, stderr=cfg.logging.stderr)
 
     secret = await asyncio.to_thread(lambda: _resolve_secret(args.secret_env))
-    server = CSCPServer(cfg, auth_backend=args.auth, secret=secret)
+    server = CSCPServer(
+        cfg,
+        auth_backend=args.auth if args.auth is not None else cfg.auth.backend,
+        auth_userdb=args.userdb,
+        secret=secret,
+    )
 
     loop = asyncio.get_running_loop()
     shutdown_requested = asyncio.Event()

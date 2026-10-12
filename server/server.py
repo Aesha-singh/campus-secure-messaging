@@ -91,6 +91,7 @@ class CSCPServer:
         cfg: Config,
         *,
         auth_backend: str = "stub",
+        auth_userdb: str | None = None,
         auth: Authenticator | None = None,
         secret: bytes | None = None,
     ) -> None:
@@ -99,8 +100,17 @@ class CSCPServer:
         self.store = InMemoryStore()  # production SQLite store swapped in messaging layer
         self.manager = ConnectionManager()
         self.rate = RateLimiter(cfg.rate)
-        self.auth = auth if auth is not None else make_authenticator(auth_backend)
         self.secret = secret if secret is not None else secrets.token_bytes(32)
+        self.auth = (
+            auth
+            if auth is not None
+            else make_authenticator(
+                auth_backend,
+                secret=self.secret,
+                userdb=auth_userdb if auth_userdb is not None else cfg.auth.userdb,
+                auth_cfg=cfg.auth,
+            )
+        )
         self.ctx = ServerContext(
             cfg=cfg,
             secret=self.secret,

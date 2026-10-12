@@ -119,6 +119,8 @@ class HeartbeatConfig:
 
 @dataclass(slots=True)
 class AuthConfig:
+    backend: str = "argon2"          # "stub" (dev only) | "argon2"
+    userdb: str = "security/users.example.yaml"
     max_attempts: int = 5
     lockout_seconds: int = 300
     token_ttl_seconds: int = 300          # short-lived access token
@@ -128,6 +130,8 @@ class AuthConfig:
     @classmethod
     def from_mapping(cls, m: Mapping[str, Any]) -> AuthConfig:
         return cls(
+            backend=str(m.get("backend", "argon2")),
+            userdb=str(m.get("userdb", "security/users.example.yaml")),
             max_attempts=int(m.get("max_attempts", 5)),
             lockout_seconds=int(m.get("lockout_seconds", 300)),
             token_ttl_seconds=int(m.get("token_ttl_seconds", 300)),

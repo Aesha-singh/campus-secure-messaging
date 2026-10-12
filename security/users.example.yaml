@@ -1,0 +1,31 @@
+# CSCP demo user database.
+#
+# SECURITY: this file is an EXAMPLE.  It contains REAL Argon2id hashes for the
+# two demo accounts below so the `argon2` auth backend works out of the box.
+# In production you must generate your own database via:
+#
+#     python -c "from pathlib import Path
+# from security.auth import provision_default_db
+# provision_default_db('security/users.yaml', {'alice': '<password>'}, roles={'alice': 'staff'})"
+#
+# NEVER commit real passwords or TOTP secrets.  `totp_secret` is stored in
+# cleartext because it is the shared *seed* (like a seed phrase): it only adds
+# value combined with the per-30s rolling code, and argon2 hashing it would
+# prevent verification.
+
+users:
+  - username: alice
+    user_id: "u_alice"
+    password_hash: "$argon2id$v=19$m=65536,t=3,p=4$78aKkpiIMOqDNqSttEtlDw$ZogAli5/kVmzYwe4NT35CgmCz4OXX70+tOe/DoKuo24"
+    role: staff
+    channels: [class-10a, staff-room]
+    device_allowlist: []
+    totp_secret: null
+
+  - username: bob
+    user_id: "u_bob"
+    password_hash: "$argon2id$v=19$m=65536,t=3,p=4$QnSxRk7qnnQvtyCnvV3L8Q$rjGBVBET+Ex7G8Yk2okksXxXKpStXhmJMu5wJAsP9Yo"
+    role: member
+    channels: [class-10a]
+    device_allowlist: []
+    totp_secret: null

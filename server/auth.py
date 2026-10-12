@@ -172,8 +172,30 @@ class StubAuthenticator:
         return AuthResult(ok=False, reason="invalid credentials", attempts_remaining=-1)
 
 
-def make_authenticator(backend: str = "stub") -> Authenticator:
-    """Factory; production wiring (Argon2id/TOTP) is added in `security/`."""
+def make_authenticator(
+    backend: str = "stub",
+    *,
+    secret: bytes | None = None,
+    userdb: str | None = None,
+    auth_cfg: Any | None = None,
+) -> Authenticator:
+    """Factory for auth backends.
+
+    ``stub``   -- dev/test only (see :class:`StubAuthenticator`)
+    ``argon2`` -- production backend from :mod:`security.auth`
+                   (Argon2id + optional TOTP, per-username lockout)
+    """
     if backend == "stub":
         return StubAuthenticator()
+    if backend == "argon2":
+        from security.auth import Argon2idAuthenticator, UserDatabase
+
+        if not secret:
+            raise ValueError("argon2 backend requires a server secret")
+        if not userdb:
+            raise ValueError("argon2 backend requires a user database path")
+        db = UserDatabase.from_yaml(userdb)
+        lockout = int(getattr(auth_cfg, "lockout_seconds", 300))
+        max_attempts = int(getattr(auth_cfg, "max_attempts", 5))
+        return Argon2idAuthenticator(db, secret, lockout_seconds=lockout, max_failures=max_attempts)
     raise ValueError(f"unknown auth backend {backend!r}")

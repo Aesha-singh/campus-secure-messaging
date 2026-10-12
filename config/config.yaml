@@ -15,9 +15,10 @@ net:
   mdns_name: "cscp-campus.local"
 
 tls:
-  certfile: "security/certs/server.crt"
+  certfile: "security/certs/server.pem"
   keyfile: "security/certs/server.key"
-  ca_file: "security/certs/ca.crt"
+  ca_file: "security/certs/ca.pem"
+  client_cert: "security/certs/cscp-client.pem"
   require_client_cert: true      # mutual TLS: clients present CA-signed certs
   min_version: "TLSv1_3"
   ciphers: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
@@ -36,6 +37,8 @@ heartbeat:
   max_missed_pings: 3
 
 auth:
+  backend: "argon2"
+  userdb: "security/users.example.yaml"
   max_attempts: 5
   lockout_seconds: 300
   token_ttl_seconds: 300
