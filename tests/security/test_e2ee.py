@@ -101,3 +101,26 @@ def test_seal_open_roundtrip_wrong_nonce() -> None:
 def test_hmac_mac_deterministic() -> None:
     assert e2ee.sign_mac(b"key", b"data") == e2ee.sign_mac(b"key", b"data")
     assert e2ee.sign_mac(b"key", b"data") != e2ee.sign_mac(b"key2", b"data")
+
+
+def test_seal_overhead_is_constant_28_bytes() -> None:
+    """Bandwidth cost of E2EE: every packet adds exactly nonce(12)+tag(16).
+
+    This is the number a network analyst reads off a capture: an E2EE frame is
+    the plaintext length plus a fixed 28-byte authentication envelope, so the
+    confidentiality gained costs a *constant*, tiny per-message overhead.
+    """
+    master = b"k" * 32
+    for n in (0, 1, 7, 64, 1000, 65536):
+        nonce, packet = e2ee.seal(master, b"a" * n, aad=b"x")
+        assert len(nonce) == e2ee.NONCE_LEN == 12
+        assert len(packet) == n + e2ee.NONCE_LEN + e2ee.TAG_LEN
+        assert len(packet) - n == 28
+
+
+def test_plaintext_is_not_visible_in_ciphertext() -> None:
+    """The marker a Wireshark session looks for must not appear on the wire."""
+    marker = b"SUPER-SECRET-CAMPUS-MARKER"
+    master = b"k" * 32
+    _, packet = e2ee.seal(master, marker, aad=b"x")
+    assert marker not in packet
