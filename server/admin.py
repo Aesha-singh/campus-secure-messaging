@@ -18,9 +18,12 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("cscp.server.admin")
+
+_DASHBOARD = (Path(__file__).with_name("dashboard.html")).read_text(encoding="utf-8")
 
 _MAX_HEADER_BYTES = 4096
 _RESPONSES = {
@@ -29,28 +32,8 @@ _RESPONSES = {
     404: "Not Found",
     405: "Method Not Allowed",
     431: "Request Header Fields Too Large",
-    500: "Internal Server Error",
+     500: "Internal Server Error",
 }
-
-_DASHBOARD = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<title>CSCP server dashboard</title>
-<style>
- body{font:14px/1.45 Menlo,monospace;color:#0f1220;padding:28px;max-width:760px}
- h1{font-size:18px} pre{background:#f5f7fb;border:1px solid #dfe4ee;padding:16px;overflow:auto}
- .ok{color:#189a3d;font-weight:bold}
-</style></head>
-<body><h1>campus-cscp-1 &mdash; live telemetry</h1>
-<p class="ok">&#9679; streaming /metrics</p>
-<pre id="m">loading&hellip;</pre>
-<script>
-fetch('/metrics').then(function(r){return r.json();}).then(function(j){
-  document.getElementById('m').textContent = JSON.stringify(j, null, 2);
-}).catch(function(e){
-  document.getElementById('m').textContent = 'error: ' + e;
-});
-</script></body></html>
-"""
 
 
 @dataclass(slots=True)
@@ -145,29 +128,33 @@ class AdminHttpServer:
         return None
 
     def _route(self, method: str, target: str, auth: str | None) -> tuple[int, bytes, str]:
-        token = self.cfg.auth_token()
-        allowed = not self.cfg.require_auth or token is None or auth == f"Bearer {token}"
-        if target in ("/metrics", "/"):
+        # The dashboard shell is public (it holds no data); the telemetry it
+        # fetches (/metrics) is bearer-gated, and the page asks for that token.
+        if target == "/":
             if method != "GET":
                 return 405, b"", "text/plain"
-            if not allowed:
-                return 401, b'{"error":"unauthorized"}', "application/json"
-        elif target == "/health":
-            if method != "GET":
-                return 405, b"", "text/plain"
-        else:
-            return 404, b'{"error":"not found"}', "application/json"
+            return 200, _DASHBOARD.encode(), "text/html; charset=utf-8"
 
         if target == "/health":
+            if method != "GET":
+                return 405, b"", "text/plain"
             body = json.dumps(
                 {"status": "ok", "uptime_s": round(time.monotonic() - self._started, 2),
                  "admin_on": self.is_serving}
             ).encode()
             return 200, body, "application/json"
+
         if target == "/metrics":
+            if method != "GET":
+                return 405, b"", "text/plain"
+            token = self.cfg.auth_token()
+            allowed = not self.cfg.require_auth or token is None or auth == f"Bearer {token}"
+            if not allowed:
+                return 401, b'{"error":"unauthorized"}', "application/json"
             body = json.dumps(self._summary(), default=str, indent=2).encode()
             return 200, body, "application/json"
-        return 200, _DASHBOARD.encode(), "text/html; charset=utf-8"
+
+        return 404, b'{"error":"not found"}', "application/json"
 
     @staticmethod
     async def _respond(

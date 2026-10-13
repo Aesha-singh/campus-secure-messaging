@@ -77,10 +77,13 @@ async def test_admin_http_routes_and_bearer_auth(monkeypatch: pytest.MonkeyPatch
         # Wrong token -> still unauthorized.
         assert (await _http(port, "/metrics", token="nope"))[0] == 401
 
-        # The HTML dashboard is served at / and needs the token too.
-        status, head, _ = await _http(port, "/", token="s3cr3t")
+        # The static dashboard shell is public (it carries no data); the page's
+        # JavaScript then supplies the bearer token to fetch /metrics.
+        status, head, body = await _http(port, "/")
         assert status == 200
         assert "text/html" in head
+        assert b"/metrics" in body
+        assert "Authorization" in body.decode("latin-1")
 
         # Method + routing errors.
         assert (await _http(port, "/metrics", method="POST", token="s3cr3t"))[0] == 405

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSCP server dashboard</title>
+<style>
+ :root{--bg:#0f1220;--panel:#171a2b;--line:#2a3050;--fg:#e8ecff;--mut:#9aa3c7;--acc:#5aa9ff;--ok:#3ddc84;--bad:#ff6b6b}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--fg);padding:22px;
+   font:14px/1.45 ui-monospace,Menlo,Consolas,monospace}
+ h1{font-size:18px;margin:0 0 4px}
+ h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:22px 0 8px}
+ .sub{color:var(--mut);margin-bottom:14px}
+ #status{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px}
+ .up{background:rgba(61,220,132,.15);color:var(--ok)}
+ .down{background:rgba(255,107,107,.15);color:var(--bad)}
+ .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+ .card .k{color:var(--mut);font-size:12px}
+ .card .v{font-size:22px;margin-top:4px}
+ .charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+ .chart{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+ canvas{width:100%;height:120px;display:block}
+ table{width:100%;border-collapse:collapse;background:var(--panel);
+   border:1px solid var(--line);border-radius:10px;overflow:hidden}
+ th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line)}
+ th{color:var(--mut);font-weight:600;font-size:12px}
+ tr:last-child td{border-bottom:0}
+ .row{display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap}
+ input{background:#0c0f1c;border:1px solid var(--line);color:var(--fg);
+   border-radius:8px;padding:7px 10px;min-width:260px}
+ button{background:var(--acc);border:0;color:#04122b;font-weight:700;
+   border-radius:8px;padding:8px 14px;cursor:pointer}
+ .mut{color:var(--mut)}
+</style></head>
+<body>
+<h1>campus-cscp &mdash; live telemetry <span id="status" class="down">connecting</span></h1>
+<div class="sub" id="sub">streaming /metrics</div>
+<div class="row">
+ <input id="token" type="password" placeholder="admin bearer token (stored locally)">
+ <button id="save">Save token</button>
+ <span class="mut" id="tokhint"></span>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="charts">
+ <div class="chart"><div class="mut">messages / sec</div><canvas id="c_mps"></canvas></div>
+ <div class="chart"><div class="mut">ping RTT (ms)</div><canvas id="c_rtt"></canvas></div>
+</div>
+
+<h2>Online users</h2>
+<table id="users">
+ <thead><tr><th>user</th><th>username</th><th>address</th></tr></thead>
+ <tbody></tbody>
+</table>
+
+<h2>Channels</h2>
+<table id="channels">
+ <thead><tr><th>id</th><th>name</th><th>kind</th><th>members</th><th>owner</th></tr></thead>
+ <tbody></tbody>
+</table>
+
+<script>
+var $ = function(id){ return document.getElementById(id); };
+var token = localStorage.getItem('cscp_admin_token') || '';
+if (token) { $('token').value = token; }
+$('save').onclick = function(){
+  token = $('token').value.trim();
+  localStorage.setItem('cscp_admin_token', token);
+  refresh();
+};
+$('tokhint').textContent = token ? '(token set)' : '(set the CSCP_ADMIN_TOKEN value)';
+
+var mps = [], rtt = [], MAX = 90;
+
+function card(k, v){
+  return '<div class="card"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';
+}
+
+function draw(canvas, values, color){
+  var dpr = window.devicePixelRatio || 1;
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  var g = canvas.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,w,h);
+  g.strokeStyle = '#2a3050'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0,h-1); g.lineTo(w,h-1); g.stroke();
+  if (values.length < 2) return;
+  var max = Math.max.apply(null, values) || 1;
+  var step = w / (values.length - 1);
+  g.beginPath();
+  for (var i=0;i<values.length;i++){
+    var x = i*step, y = h - (values[i]/max)*(h-6) - 3;
+    if (i===0) g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.strokeStyle = color; g.lineWidth = 2; g.stroke();
+  g.fillStyle = '#9aa3c7'; g.font = '11px monospace';
+  g.fillText('peak '+max.toFixed(1), 6, 13);
+}
+
+function render(j){
+  var m = j.metrics || {};
+  var cards = [
+    ['active connections', m.connections_active||0],
+    ['connections total', m.connections_total||0],
+    ['messages / sec', (m.messages_per_sec||0)],
+    ['messages in/out', (m.messages_in||0)+' / '+(m.messages_out||0)],
+    ['direct / group', (m.messages_direct||0)+' / '+(m.messages_group||0)],
+    ['auth ok / fail', (m.auth_success||0)+' / '+(m.auth_failure||0)],
+    ['bytes in/out', (m.bytes_in||0)+' / '+(m.bytes_out||0)],
+    ['transfers done/bytes', (m.transfers_completed||0)+' / '+(m.transfers_bytes||0)],
+    ['rate limited', m.rate_limited||0],
+    ['malformed frames', m.malformed_frames||0],
+    ['uptime (s)', m.uptime_s||0]
+  ];
+  $('cards').innerHTML = cards.map(function(c){ return card(c[0], c[1]); }).join('');
+
+  mps.push(m.messages_per_sec||0); if (mps.length>MAX) mps.shift();
+  rtt.push(m.ping_rtt_last_ms||0); if (rtt.length>MAX) rtt.shift();
+  draw($('c_mps'), mps, '#5aa9ff');
+  draw($('c_rtt'), rtt, '#3ddc84');
+
+  var on = (j.online && j.online.online) || {};
+  var rows = Object.keys(on).map(function(uid){
+    return '<tr><td>'+uid+'</td><td>'+(on[uid].username||'')+'</td><td>'+(on[uid].ip||'')+'</td></tr>';
+  });
+  var ubody = $('users').querySelector('tbody');
+  ubody.innerHTML = rows.length ? rows.join('')
+    : '<tr><td colspan="3" class="mut">no users online</td></tr>';
+
+  var ch = (j.online && j.online.channels) || {};
+  var crows = Object.keys(ch).map(function(cid){
+    var c = ch[cid];
+    var members = (c.member_count!=null) ? c.member_count : ((c.members||[]).length);
+    return '<tr><td>'+cid+'</td><td>'+(c.name||'')+'</td><td>'+(c.kind||'')+'</td><td>'+
+      members+'</td><td>'+(c.owner||c.created_by||'')+'</td></tr>';
+  });
+  var cbody = $('channels').querySelector('tbody');
+  cbody.innerHTML = crows.length ? crows.join('')
+    : '<tr><td colspan="5" class="mut">no channels</td></tr>';
+}
+
+function refresh(){
+  var opts = { headers: token ? { 'Authorization': 'Bearer '+token } : {} };
+  fetch('/metrics', opts).then(function(r){
+    if (r.status === 401) { throw new Error('unauthorized (bad/missing token)'); }
+    return r.json();
+  }).then(function(j){
+    $('status').className = 'up'; $('status').textContent = 'live';
+    $('sub').textContent = (j.server_name||'server') + '  ·  updated ' +
+      new Date().toLocaleTimeString();
+    render(j);
+  }).catch(function(e){
+    $('status').className = 'down'; $('status').textContent = 'error';
+    $('sub').textContent = String(e);
+  });
+}
+refresh();
+setInterval(refresh, 1500);
+</script></body></html>
