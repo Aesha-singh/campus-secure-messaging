@@ -45,7 +45,7 @@ include = ["protocol*", "server*", "client*", "security*", "messaging*", "admin*
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "scripts"]
 asyncio_mode = "auto"
 filterwarnings = ["error::DeprecationWarning"]
 addopts = "-q"

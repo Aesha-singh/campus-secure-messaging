@@ -57,8 +57,8 @@ class ClientTls:
             ctx.load_verify_locations(cafile=self.ca_file)
         else:
             ctx.check_hostname = False
-        if has_any_tls:
-            ctx.load_cert_chain(self.certfile or "", self.keyfile or "")
+        if self.certfile and self.keyfile:
+            ctx.load_cert_chain(self.certfile, self.keyfile)
         ctx.verify_mode = ssl.CERT_REQUIRED if self.ca_file else ssl.CERT_NONE
         return ctx
 

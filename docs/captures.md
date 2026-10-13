@@ -17,6 +17,30 @@ The marker sent in every run is `CAMPUS-E2EE-DEMO-MARKER`.  The whole point:
 in A it is readable, in B it is not even though the TCP is still cleartext,
 and in C the entire protocol header disappears behind TLS.
 
+## Root-free capture (default in this repo)
+
+`tcpdump`/`dumpcap` need raw-socket privileges, which often means a `sudo`
+password we may not have.  Instead, `scripts/pcap_capture.py` inserts a
+**userspace TCP tap** between the client and the server: a plain `asyncio` relay
+that copies every byte both ways and re-frames them into synthesized IPv4/TCP
+packets (valid header checksums) written as a standard **libpcap** file with
+`linktype 228` (`LINKTYPE_IPV4`).  Wireshark opens it exactly like a `tcpdump`
+capture -- because it is one; we only forged the IP layer ourselves.
+
+```bash
+make pcap                     # -> captures/{A-plain,B-e2ee,C-tls}.pcap
+# or one scenario:
+python scripts/pcap_capture.py --mode e2ee
+```
+
+The committed `captures/*.pcap` files are produced this way, so the evidence is
+reproducible without root.  The tap is the *same* bytes the application sends --
+it is just another TCP endpoint, which is itself the lesson: TLS/E2EE operate
+end-to-end, so a relay in the middle cannot read them.
+
+The `sudo tcpdump` recipes below are the classic alternative if you *do* have
+root (and preferable when you want to capture real NIC traffic, not loopback).
+
 ## Setup
 
 ```bash
@@ -117,3 +141,11 @@ curl -s -H "Authorization: Bearer devtoken" http://127.0.0.1:9444/metrics
   length is independent of payload entropy -- so the overhead is predictable.
 - TLS adds its own record/handshake overhead but authenticates the channel;
   measure both with `tests/load` (phase 10) if you want numbers for the report.
+
+## Benchmark charts
+
+The load sweep is charted for the report by `scripts/bench_charts.py`
+(`make charts`), which writes `docs/charts/throughput.png` and
+`docs/charts/latency.png`.  See `docs/benchmarks.md` for the numbers and the
+networking reading of the shape (throughput rises then plateaus; the RTT tail
+bends up as concurrency grows -- Little's law on a single event loop).
