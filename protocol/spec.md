@@ -139,6 +139,12 @@ Grouped by high nibble so a receiver can classify cheaply.
 | | `0x31` | `PONG` | C↔S | echoed ts/nonce, server_ts |
 | Lifecycle | `0x40` | `ERROR` | S→C | code, message, fatal |
 | | `0x41` | `DISCONNECT` | C↔S | reason, code |
+| Channel | `0x50` | `CHANNEL_CREATE` | C→S | channel_id, name, kind, visibility |
+| | `0x51` | `CHANNEL_JOIN` | C→S | channel_id |
+| | `0x52` | `CHANNEL_LEAVE` | C→S | channel_id |
+| | `0x53` | `CHANNEL_LIST` | C→S | (optional filter) |
+| | `0x54` | `CHANNEL_INFO` | S→C | channel_id, name, kind, member_count, owner |
+| | `0x55` | `CHANNEL_LIST_END` | S→C | count |
 
 ---
 
@@ -256,6 +262,15 @@ server never sees plaintext (the per-file key is wrapped for the recipient with
 the E2EE channel). The relay is a pure store-and-forward service with flow
 control and resume.
 
+Client-side note: the sender seals the **whole file** as one AES-256-GCM blob
+(with a random per-file key wrapped to the recipient's pinned X25519 identity)
+and hands that ciphertext to the relay, which slices it into chunks. Encrypting
+per chunk instead would add the AEAD's 28-byte (nonce+tag) overhead to every
+chunk and break the relay's fixed-size offset math, so integrity is checked
+once, over the assembled blob, at `FILE_DONE`. (If the peer is not pinned, the
+transfer falls back to cleartext-at-rest with the relay providing transport
+confidentiality via TLS.)
+
 ### Negotiation
 
 ```
@@ -307,6 +322,39 @@ is indistinguishable from a fresh one apart from the starting index.
 
 ---
 
+## 8c. Channel rooms: server-mediated group relay
+
+Channels are the **application-layer multicast** plane. Unlike 1:1 DMs (which
+are E2EE and relayed opaquely), a channel is a server-managed group: the server
+tracks membership, enforces it on every send, and fans a posted `MSG_GROUP` out
+to the other members. Text is UTF-8 in `MSG_GROUP.ciphertext`; confidentiality
+in transit is provided by TLS + mTLS, and posts are persisted like DMs (so
+offline members get them on reconnect via history sync).
+
+```
+  Client A                    Server                     Client B, C
+    |-- CHANNEL_CREATE -------- >|  (creator joins as owner)
+    |<-- CHANNEL_INFO -----------|
+    |-- CHANNEL_LIST ----------- >|
+    |<-- CHANNEL_INFO (xN) ------|  one per channel
+    |<-- CHANNEL_LIST_END -------|
+    |-- MSG_GROUP ------------- >|  membership required
+    |                            |--- MSG_GROUP ---> B
+    |                            |--- MSG_GROUP ---> C   (sender excluded)
+```
+
+Rules:
+
+* `CHANNEL_KINDS = public | private | course | club`; a public default channel
+  (`lobby`) is seeded at startup.
+* `CHANNEL_CREATE` is idempotent on `channel_id`; the creator is added as
+  `owner`. `JOIN`/`LEAVE` mutate membership; a `MSG_GROUP` from a non-member is
+  rejected with `ERROR(NOT_A_MEMBER)`.
+* `CHANNEL_LIST` streams one `CHANNEL_INFO` per channel followed by a single
+  `CHANNEL_LIST_END` (a little listing protocol on top of the one-shot RPC).
+
+---
+
 ## 9. Security layering
 
 ```
@@ -337,8 +385,12 @@ E2EE AEAD (end-to-end). See `security/threat_model.md` for the STRIDE analysis.
 | Messaging session handlers | `server/session.py` |
 | File relay + window/resume/quota | `server/transfer.py` |
 | Telemetry counters | `server/metrics.py` |
-| HTTP admin dashboard | `server/admin.py` |
+| HTTP admin dashboard | `server/admin.py`, `server/dashboard.html` |
+| mDNS/DNS-SD advertisement | `server/mdns.py` |
 | Client transport / session / E2EE / store | `client/transport.py`, `client/session.py`, `client/crypto.py`, `client/store.py` |
+| Client service discovery | `client/discovery.py` |
+| Desktop UI (channels, files, diagnostics) | `client/ui/chat.py` |
+| Root-free packet capture / bench charts | `scripts/pcap_capture.py`, `scripts/bench_charts.py` |
 
 Tests: `tests/protocol/` (boundaries, malformed, oversized, truncated,
 coalesced, replay, and Hypothesis fuzzing).

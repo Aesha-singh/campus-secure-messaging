@@ -17,12 +17,21 @@ Protocol — a custom binary application-layer protocol over TLS 1.3.
 - **Store-and-forward** — offline messages and files are persisted (SQLite/WAL)
   and replayed byte-identically on reconnect; unread badges and history sync.
 - **File transfer** — chunked relay with a sliding-window cumulative ACK,
-  resume from a byte offset, per-user quotas and TTL cleanup.
+  resume from a byte offset, per-user quotas and TTL cleanup; peer-to-peer
+  transfers can be sealed end-to-end with a per-file AES-256-GCM key wrapped to
+  the recipient's pinned X25519 identity.
+- **Channel rooms** — server-mediated public/private/course/club channels with
+  membership, `create/join/leave/list` and live fan-out, persisted like DMs.
+- **mDNS/DNS-SD discovery** — the server advertises `_cscp._tcp.local.` so a
+  client can find the campus server on the LAN with no manual host/port.
 - **Desktop client** — PyQt6 + `qasync` (one event loop owns the socket and the
   widgets): sign-in, chat, transcript, unread badges, E2EE contact pinning,
-  live transport status.
+  channel rooms, file send/accept with progress, a live RTT/jitter/loss
+  diagnostics panel, and a discovery dialog.
 - **Admin dashboard** — a hand-rolled HTTP/1.1 listener exposing `/metrics`
-  (JSON telemetry) and `/health`, on a separate TCP port from the CSCP service.
+  (JSON telemetry) and `/health`, on a separate TCP port from the CSCP service;
+  the served page is a live, dependency-free dashboard (canvas charts + online
+  user/channel tables) that polls `/metrics`.
 - **Auth** — Argon2id passwords, TOTP 2FA, rate limiting, replay/DoS guards.
 
 ## Stack
@@ -44,17 +53,20 @@ Protocol — a custom binary application-layer protocol over TLS 1.3.
 ```
 protocol/   CSCP spec, codec (FrameDecoder), message types, replay guard
 server/     asyncio + TLS server, sessions, connection manager, heartbeat,
-            rate limiting, metrics, HTTP admin dashboard, file relay
+            rate limiting, metrics, channel rooms, file relay, mDNS advert,
+            live HTTP dashboard (dashboard.html)
 client/     transport, session FSM, E2EE device identity, local store,
+            mDNS discovery (discovery.py), diagnostics,
             PyQt6 desktop UI (client/ui/), console harness
 messaging/  SQLite message store (offline queue, history, unread)
 security/   CA/cert generation, Argon2id auth, TOTP, E2EE primitives
-tests/      protocol, server, client, security, load
-scripts/    traffic_demo.py (Wireshark), bench.py (load)
-docs/       captures.md (Wireshark guide), threat_model.md, spec
+tests/      protocol, server, client, security, scripts, load
+scripts/    traffic_demo.py (Wireshark), pcap_capture.py (root-free capture),
+            bench.py (load), bench_charts.py (report charts)
+docs/       captures.md (Wireshark), benchmarks.md + charts/, threat_model.md
 deploy/     Dockerfile, docker-compose.yml, systemd unit, prod config
 config/     server + client YAML
-captures/   saved pcaps for the report
+captures/   saved pcaps for the report (root-free, see docs/captures.md)
 ```
 
 ## Quick start
@@ -91,9 +103,10 @@ make cli USER=alice PEER=u_bob SEND="hello"
 
 | What to demonstrate | How |
 |---|---|
-| Cleartext vs E2EE vs TLS | `make capture MODE=plain` + `make demo MODE=plain` (see `docs/captures.md`) |
-| Live telemetry | `CSCP_ADMIN_TOKEN=dev python -m server.main --auth stub` then `curl -H "Authorization: Bearer dev" localhost:9444/metrics` |
-| Load / latency / throughput | `make bench CLIENTS=200 MSGS=10` |
+| Cleartext vs E2EE vs TLS | `make pcap` (root-free, writes `captures/*.pcap`) or `make capture MODE=plain`; see `docs/captures.md` |
+| Live telemetry | `CSCP_ADMIN_TOKEN=dev python -m server.main --auth stub`, then open `http://127.0.0.1:9444/` (dashboard) or `curl -H "Authorization: Bearer dev" localhost:9444/metrics` |
+| Load / latency / throughput | `make bench CLIENTS=200 MSGS=10`, or `make charts` for report PNGs (`docs/benchmarks.md`) |
+| LAN service discovery | `python -m server.main --config deploy/server.local.yaml` (mDNS on) then the client's "Discover..." dialog |
 | Offline store-and-forward | unit test `tests/client/test_session.py::test_offline_queue_delivered_after_reconnect` |
 
 Sample load result (loopback, one event loop): **101 connections in 8 ms,
@@ -111,7 +124,11 @@ auth ≈3,000/s, ≈21,700 msgs/s, RTT p50 4.2 / p99 4.6 ms, 0 rate-limited.**
 | ACK correlation + msg_id de-dup | at-least-once delivery → effectively-once |
 | Sliding-window chunk ACK + resume | flow control, retransmission, resume |
 | Server-side persistence + replay | store-and-forward, offline delivery |
+| Channel membership + server fan-out | application-layer multicast (group messaging) |
+| mDNS/DNS-SD `_cscp._tcp.local.` | zero-config service discovery on the LAN |
 | HTTP/1.1 admin on a second port | two application protocols, one process |
+| Userspace TCP tap + pcap writer | packet capture without raw-socket privileges |
+| RTT/jitter/loss sampling (PING/PONG) | active network-quality measurement |
 | Rate limiting (token bucket) | DoS mitigation, QoS |
 
 See `protocol/spec.md` for the full protocol and `docs/threat_model.md` for the
