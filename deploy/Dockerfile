@@ -21,9 +21,11 @@ RUN pip install --no-cache-dir .
 
 # Runtime config + mutable state directories, owned by the unprivileged user.
 COPY config ./config
+COPY deploy/entrypoint.sh /app/deploy/entrypoint.sh
 RUN groupadd --system cscp \
     && useradd --system --gid cscp --home /app --shell /usr/sbin/nologin cscp \
     && mkdir -p /app/data /app/logs /app/security/certs \
+    && chmod +x /app/deploy/entrypoint.sh \
     && chown -R cscp:cscp /app
 
 USER cscp
@@ -35,5 +37,6 @@ EXPOSE 9443 9444
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9444/health', timeout=3).status==200 else 1)"
 
-ENTRYPOINT ["cscp-server"]
-CMD ["--config", "/app/config/config.yaml"]
+# entrypoint.sh creates state dirs + bootstraps the PKI, then execs the command.
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]
+CMD ["cscp-server", "--config", "/app/config/config.yaml"]

@@ -54,6 +54,31 @@ class Listener:
     address: tuple[Any, ...] | None = None
 
 
+def _apply_ciphers(ctx: ssl.SSLContext, ciphers: str) -> None:
+    """Apply a cipher policy, using the TLS 1.3 API when appropriate.
+
+    TLS 1.3 suites are configured with ``set_ciphersuites``; ``set_ciphers``
+    only understands the legacy TLS <=1.2 syntax and raises
+    ``"No cipher can be selected"`` when handed a list of TLS 1.3 names (the
+    default in our config).  Try the TLS 1.3 API first, then fall back for an
+    old-style string, and silently accept an empty policy (OpenSSL's secure
+    defaults apply).
+    """
+    if not ciphers:
+        return
+    set_ciphersuites = getattr(ctx, "set_ciphersuites", None)
+    if set_ciphersuites is not None:
+        try:
+            set_ciphersuites(ciphers)
+            return
+        except (ssl.SSLError, ValueError):
+            pass
+    try:
+        ctx.set_ciphers(ciphers)
+    except ssl.SSLError:
+        log.warning("ignoring unusable cipher policy %r; using library defaults", ciphers)
+
+
 def build_ssl_context(cfg: TlsConfig) -> ssl.SSLContext | None:
     """Build a TLS 1.3 server context, or ``None`` when certs are absent.
 
@@ -71,7 +96,7 @@ def build_ssl_context(cfg: TlsConfig) -> ssl.SSLContext | None:
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-    ctx.set_ciphers(cfg.ciphers)
+    _apply_ciphers(ctx, cfg.ciphers)
     ctx.load_cert_chain(cfg.certfile, cfg.keyfile)
     if cfg.require_client_cert:
         ca_path = Path(cfg.ca_file)

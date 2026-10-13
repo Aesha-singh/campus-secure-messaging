@@ -1,0 +1,88 @@
+# Local / demo CSCP server config for the docker-compose stack.
+#
+# TLS 1.3 + mTLS with certificates the container generates on first boot, and
+# the *production* Argon2id auth backend backed by a demo user DB the entrypoint
+# provisions (see deploy/entrypoint.sh).  No secrets live in this file.
+
+server_name: "campus-cscp-local"
+
+net:
+  enable_v4: true
+  host_v4: "0.0.0.0"
+  enable_v6: true
+  host_v6: "::"
+  port: 9443
+
+tls:
+  certfile: "security/certs/server.pem"
+  keyfile: "security/certs/server.key"
+  ca_file: "security/certs/ca.pem"
+  require_client_cert: true       # mutual TLS: clients must present CA-signed certs
+  min_version: "TLSv1_3"
+  ciphers: "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+
+limits:
+  max_connections: 2000
+  max_frame_size: 16777216
+  write_queue_size: 512
+  close_timeout: 3.0
+  max_username_len: 64
+  max_message_bytes: 524288
+
+heartbeat:
+  ping_interval: 30.0
+  idle_timeout: 90.0
+  max_missed_pings: 3
+
+auth:
+  backend: "argon2"
+  userdb: "security/users.yaml"   # provisioned by the entrypoint (demo accounts)
+  max_attempts: 5
+  lockout_seconds: 300
+  token_ttl_seconds: 300
+  session_resume_ttl_seconds: 604800
+  totp_enabled: false             # no 2FA on the demo accounts
+
+rate:
+  per_ip:
+    capacity: 120
+    refill_per_sec: 40
+  per_user:
+    capacity: 300
+    refill_per_sec: 100
+  auth_window_seconds: 300
+  auth_max_per_window: 20
+
+storage:
+  db_path: "data/campus.db"
+  wal: true
+  history_limit: 200
+
+files:
+  enabled: true
+  max_size_bytes: 209715200
+  quota_bytes: 2147483648
+  ttl_seconds: 604800
+  chunk_size: 65536
+  relay_encrypted_blobs_dir: "data/blobs"
+  allowed_mime:
+    - "application/pdf"
+    - "image/png"
+    - "image/jpeg"
+    - "text/plain"
+    - "application/zip"
+
+logging:
+  level: "INFO"
+  json: true
+  file: "logs/server.log"
+  stderr: true
+
+admin:
+  enable: true
+  host_v4: "127.0.0.1"
+  port: 9444
+  require_auth: true
+  auth_token_env: "CSCP_ADMIN_TOKEN"
+
+admin_password_env: "CSCP_ADMIN_PASSWORD"

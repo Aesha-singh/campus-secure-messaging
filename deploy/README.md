@@ -1,9 +1,42 @@
 # Deployment guide
 
-Two supported paths: **Docker Compose** (fastest) and a **systemd** service on
-a Linux host.  Both run the same `cscp-server` entry point with TLS 1.3 + mTLS.
+Three supported paths: a **turnkey local stack** (fastest), **Docker Compose**
+on a server, and a **systemd** service on a Linux host.  All run the same
+`cscp-server` entry point with TLS 1.3 + mTLS.
 
-## 0. Generate the PKI (once)
+## Quick start -- turnkey local stack
+
+From the repo root, one command (needs Docker Desktop / Engine):
+
+```bash
+make up                 # copies deploy/.env.example -> deploy/.env, then builds + starts
+make client-stack       # launches the PyQt6 client against it (TLS 1.3 + mTLS)
+make logs               # follow server logs
+make down               # stop
+```
+
+On first boot the container **generates its own PKI** (CA + server + client
+leaf) into `security/certs/` and **provisions demo accounts**, so TLS 1.3 +
+mTLS and login work with zero manual setup.  Edit `deploy/.env` to replace the
+placeholder secrets before using it for anything real.
+
+Demo logins (Argon2id backend, password `CSCP_DEMO_PASSWORD`, default
+`campus-demo1`): **`alice`** and **`bob`**.
+
+| Endpoint | Address |
+|---|---|
+| CSCP protocol (TLS 1.3 + mTLS) | `9443/tcp` |
+| Admin dashboard (loopback) | `http://127.0.0.1:9444` |
+
+> On Linux the bind-mounted directories are owned by your host user; if the
+> container cannot write the PKI, run `make certs` on the host first (or
+> `sudo chown -R 999:999 security/certs data logs`).  On macOS Docker Desktop
+> this is not needed.
+
+## 0. Generate the PKI (once, for a real deployment)
+
+For a public server, generate certs whose SANs match your hostname/IP rather
+than relying on the container's local bootstrap:
 
 ```bash
 python -m security.certs --outdir security/certs --ip 203.0.113.10 --host messaging.campus.edu
@@ -14,20 +47,16 @@ Keep `ca.key` **off the server** after signing (it is the trust anchor).  Distri
 `ca.pem` + a client cert/key pair to each device.  The client opts into mTLS with
 `require_tls: true` and the `ca_file`/`certfile`/`keyfile` paths.
 
-## 1a. Docker Compose
+## 1a. Docker Compose (server)
 
 ```bash
 # from deploy/
-cat > .env <<'EOF'
-CSCP_SERVER_SECRET=$(python -c 'import secrets;print(secrets.token_hex(32))')
-CSCP_ADMIN_PASSWORD=$(python -c 'import secrets;print(secrets.token_urlsafe(24))')
-CSCP_ADMIN_TOKEN=$(python -c 'import secrets;print(secrets.token_urlsafe(24))')
-EOF
+cp .env.example .env    # then edit the three secrets
 docker compose up -d --build
 docker compose logs -f cscp
 ```
 
-The image is multi-stage-free, runs as non-root (`cscp`), drops all Linux
+The image runs as non-root (`cscp`), drops all Linux
 capabilities, and exposes:
 - `9443/tcp` -- CSCP protocol (publish this through your firewall)
 - `127.0.0.1:9444/tcp` -- admin dashboard (bound to loopback in compose)

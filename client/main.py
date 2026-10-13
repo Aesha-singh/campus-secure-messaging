@@ -48,6 +48,8 @@ async def run(args: argparse.Namespace) -> int:  # noqa: C901
         cfg.password = args.password
     if args.totp:
         cfg.totp = args.totp
+    if args.peer:
+        args.peer = _peer_id(args.peer)
 
     data_root = Path(cfg.data_dir) / args.username
     identity = load_or_create_identity(data_root / "identity.key")
@@ -55,76 +57,92 @@ async def run(args: argparse.Namespace) -> int:  # noqa: C901
 
     store = ClientStore(data_root / "profile.db")
     await store.open()
-    pinned = await store.load_peers()
-    for pid, key in pinned.items():
-        crypto.ring.load(pid, key)
 
-    if args.peer_key:
-        key = bytes.fromhex(args.peer_key)
-        crypto.pin_peer(args.peer, key)
-        await store.save_peer(args.peer, key.hex())
-
-    my_pub = crypto.own_public()
-    print(f"device_id={identity.device_id} public_key={my_pub.hex()}")
-
-    async def on_ready(session: ClientSession) -> None:
-        print(f"ready: {session.username} user_id={session.user_id}")
-
-    async def on_message(msg) -> None:  # type: ignore[no-untyped-def]
-        body = msg.text if msg.text is not None else f"[ciphertext {len(msg.raw)}B]"
-        print(f"<< {msg.peer_id}: {body}")
-
-    async def on_presence(presence) -> None:  # type: ignore[no-untyped-def]
-        print(f"presence: {presence.user_id} -> {presence.state.name}")
-
-    async def on_disconnected() -> None:
-        print("! connection lost (will reconnect with backoff)")
-
-    cbs = ClientCallbacks(
-        on_ready=on_ready,
-        on_message=on_message,
-        on_presence=on_presence,
-        on_disconnected=on_disconnected,
-    )
-    session = ClientSession(cfg=cfg, crypto=crypto, store=store, callbacks=cbs)
-    session.set_credentials(args.username, args.password, args.totp)
-
-    runner = asyncio.create_task(session.run())
+    session: ClientSession | None = None
+    started = False
     try:
-        await asyncio.wait_for(_connected_flag(session), timeout=15)
-    except TimeoutError:
-        print("auth timeout; check credentials/TOTP")
-        await session.stop()
-        return 2
+        pinned = await store.load_peers()
+        for pid, key in pinned.items():
+            crypto.ring.load(pid, key)
 
-    if args.sync:
-        peer = args.peer if args.peer else args.username
-        await session.mark_read("dm", _convo(session.user_id, peer))
-        await session.sync_history("dm", _convo(session.user_id, peer))
-        await asyncio.sleep(0.5)
-    if args.send:
-        peer = _peer_for(session, args)
-        msg_id = await session.send_text(peer_id=peer, text=args.send)
+        if args.peer_key:
+            key = bytes.fromhex(args.peer_key)
+            crypto.pin_peer(args.peer, key)
+            await store.save_peer(args.peer, key.hex())
+
+        my_pub = crypto.own_public()
+        print(f"device_id={identity.device_id} public_key={my_pub.hex()}")
+
+        async def on_ready(session: ClientSession) -> None:
+            print(f"ready: {session.username} user_id={session.user_id}")
+
+        async def on_message(msg) -> None:  # type: ignore[no-untyped-def]
+            body = msg.text if msg.text is not None else f"[ciphertext {len(msg.raw)}B]"
+            print(f"<< {msg.peer_id}: {body}")
+
+        async def on_presence(presence) -> None:  # type: ignore[no-untyped-def]
+            print(f"presence: {presence.user_id} -> {presence.state.name}")
+
+        async def on_disconnected() -> None:
+            print("! connection lost (will reconnect with backoff)")
+
+        cbs = ClientCallbacks(
+            on_ready=on_ready,
+            on_message=on_message,
+            on_presence=on_presence,
+            on_disconnected=on_disconnected,
+        )
+        session = ClientSession(cfg=cfg, crypto=crypto, store=store, callbacks=cbs)
+        session.set_credentials(args.username, args.password, args.totp)
+
+        runner = asyncio.create_task(session.run())
+        started = True
         try:
-            ack = await session.await_ack(msg_id, ttl_seconds=5.0)
-            print(f"ack: {session.delivery_status_text(ack)}")
+            await asyncio.wait_for(_connected_flag(session), timeout=15)
         except TimeoutError:
-            print("no ack yet (recipient or network pending)")
-        await session.stop()
-        return 0
+            print("auth timeout; check credentials/TOTP")
+            return 2
 
-    print("interactive demo: waiting; press Ctrl-C to exit")
-    try:
-        await runner
-    except KeyboardInterrupt:
-        await session.stop()
-    return 0
+        if args.sync:
+            peer = args.peer if args.peer else args.username
+            await session.mark_read("dm", _convo(session.user_id, peer))
+            await session.sync_history("dm", _convo(session.user_id, peer))
+            await asyncio.sleep(0.5)
+        if args.send:
+            peer = _peer_for(session, args)
+            msg_id = await session.send_text(peer_id=peer, text=args.send)
+            try:
+                ack = await session.await_ack(msg_id, ttl_seconds=5.0)
+                print(f"ack: {session.delivery_status_text(ack)}")
+            except TimeoutError:
+                print("no ack yet (recipient or network pending)")
+            return 0
+
+        print("interactive demo: waiting; press Ctrl-C to exit")
+        try:
+            await runner
+        except KeyboardInterrupt:
+            pass
+        return 0
+    finally:
+        if started and session is not None:
+            await session.stop()
+        await store.close()
+
+
+def _peer_id(name: str) -> str:
+    """Normalise a peer *username* to its canonical user id (``u_<name>``).
+
+    The server addresses users by ``user_id`` (``u_alice``), so the console
+    accepts either form for convenience.
+    """
+    return name if name.startswith("u_") else f"u_{name}"
 
 
 def _peer_for(session: ClientSession, args: argparse.Namespace) -> str:
     if args.send and not args.peer:
         return session.user_id  # unreachable default safe fallback
-    return args.peer or session.user_id
+    return _peer_id(args.peer) if args.peer else session.user_id
 
 
 def _convo(a: str, b: str) -> str:

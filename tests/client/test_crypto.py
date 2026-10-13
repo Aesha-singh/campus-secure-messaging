@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from cryptography.exceptions import InvalidTag
 
-from client.crypto import ClientCrypto
+from client.crypto import ClientCrypto, load_or_create_identity
 from security.e2ee import E2EEChannel
 
 
@@ -79,3 +79,21 @@ class TestClientCrypto:
         packet = alice.channel_for("u_bob").send("m0", b"secret")
         with pytest.raises((ValueError, InvalidTag)):
             bob.channel_for("u_alice").recv("m0", packet)
+
+
+def test_load_or_create_identity_is_idempotent(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # Regression: the file was written as raw key bytes but read back as hex
+    # text, so the *second* load of the same path crashed with UnicodeDecodeError.
+    path = tmp_path / "u_alice" / "identity.key"
+    first = load_or_create_identity(path)
+    second = load_or_create_identity(path)
+    assert first.device_id == "u_alice"
+    assert first.private_key.private_bytes_raw() == second.private_key.private_bytes_raw()
+
+
+def test_load_or_create_identity_reads_legacy_hex(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    path = tmp_path / "u_bob" / "identity.key"
+    seeded = load_or_create_identity(path)
+    path.write_text(seeded.private_key.private_bytes_raw().hex())  # legacy encoding
+    reloaded = load_or_create_identity(path)
+    assert reloaded.private_key.private_bytes_raw() == seeded.private_key.private_bytes_raw()

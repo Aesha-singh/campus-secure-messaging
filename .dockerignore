@@ -17,7 +17,12 @@ logs
 captures
 docs
 tests
-deploy
 *.md
 !README.md
 .env
+# Never bake locally-generated secrets into the image (the PKI is created at
+# runtime inside the mounted volume; user DBs are provisioned on first boot).
+security/certs/*.pem
+security/certs/*.key
+security/certs/*.crt
+security/users.yaml

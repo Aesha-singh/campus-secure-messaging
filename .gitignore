@@ -24,6 +24,7 @@ env/
 *.pfx
 !**/ca/.gitkeep
 security/certs/**
+!security/certs/.gitkeep
 security/keys/**
 *.crt
 !docs/**/*.crt

@@ -185,6 +185,21 @@ def new_device_id() -> str:
     return "dev-" + uuid.uuid4().hex[:16]
 
 
+def _read_private_key_bytes(path: Path) -> bytes:
+    """Read a stored X25519 private key, accepting raw or legacy hex encoding."""
+    data = path.read_bytes()
+    try:
+        text = data.decode("ascii").strip()
+    except UnicodeDecodeError:
+        return data
+    if len(text) == 64:  # legacy hex-encoded form (32 bytes -> 64 hex chars)
+        try:
+            return bytes.fromhex(text)
+        except ValueError:
+            return data
+    return data
+
+
 def load_or_create_identity(path: Path) -> DeviceIdentity:
     """Load the device identity from ``path``, or mint a fresh one.
 
@@ -192,8 +207,8 @@ def load_or_create_identity(path: Path) -> DeviceIdentity:
     stealing it lets an attacker impersonate the device, so this file is the
     client-side secret (documented in the viva threat table).
     """
-    raw = bytes.fromhex(path.read_text().strip()) if path.exists() else b""
-    if raw:
+    raw = _read_private_key_bytes(path) if path.exists() else b""
+    if len(raw) == 32:
         try:
             pk = X25519PrivateKey.from_private_bytes(raw)
             return DeviceIdentity(device_id=path.parent.name, private_key=pk)

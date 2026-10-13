@@ -59,6 +59,19 @@ captures/   saved pcaps for the report
 
 ## Quick start
 
+Fastest path — one command runs the whole stack in Docker (generates its own
+certs + demo accounts on first boot, then serves TLS 1.3 + mTLS):
+
+```bash
+make up              # build + start (needs Docker); CSCP on :9443, admin on :9444
+make client-stack    # launch the PyQt6 desktop client against it
+make down            # stop
+```
+
+Demo logins: `alice` / `bob`, password `campus-demo1`.
+
+Or run everything directly on the host:
+
 ```bash
 make venv            # create virtualenv + install dev+client deps
 make certs           # generate the local CA + server + client certs

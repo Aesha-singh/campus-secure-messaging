@@ -2,7 +2,7 @@
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-.PHONY: help venv install test lint type check certs server client cli demo bench capture clean
+.PHONY: help venv install test lint type check certs server client cli demo bench capture up down logs client-stack clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +46,21 @@ bench: ## Run the load benchmark.  Usage: make bench CLIENTS=200 MSGS=10
 
 capture: ## Capture loopback CSCP traffic to captures/ (needs sudo).  MODE=plain|e2ee|tls
 	sudo tcpdump -i lo0 -s 0 -w captures/$(or $(MODE),plain).pcap 'tcp port 9443'
+
+up: ## Build + start the local Docker stack (turnkey; creates .env if missing)
+	@cd deploy && { [ -f .env ] || { cp .env.example .env; echo "deploy/.env created from example -- edit the secrets before real use"; }; }
+	@cd deploy && docker compose up -d --build
+	@echo "CSCP on :9443 (TLS 1.3 + mTLS); admin on http://127.0.0.1:9444"
+	@echo "Run the desktop client with:  make client-stack"
+
+down: ## Stop the local Docker stack
+	@cd deploy && docker compose down
+
+logs: ## Follow the local Docker stack logs
+	@cd deploy && docker compose logs -f cscp
+
+client-stack: ## Launch the GUI against the local Docker stack (TLS + mTLS)
+	$(PY) -m client.main --gui --config deploy/client.local.yaml
 
 clean: ## Remove caches and build artifacts
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage build dist *.egg-info
