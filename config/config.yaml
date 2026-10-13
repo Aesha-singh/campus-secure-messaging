@@ -80,4 +80,15 @@ logging:
   file: "logs/server.log"
   stderr: true
 
+# Admin dashboard: a plain HTTP/1.1 listener (separate from the CSCP TLS port)
+# exposing GET /health and GET /metrics.  Bind to loopback and set
+# CSCP_ADMIN_TOKEN in the environment so /metrics and / require
+# `Authorization: Bearer <token>`.  Never put the token itself in this file.
+admin:
+  enable: true
+  host_v4: "127.0.0.1"
+  port: 9444
+  require_auth: true
+  auth_token_env: "CSCP_ADMIN_TOKEN"
+
 admin_password_env: "CSCP_ADMIN_PASSWORD"

@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from protocol.constants import FILE_CHUNK_SIZE, MAX_FRAME_SIZE
+from server.admin import AdminHttpConfig
 
 _BASE = Path(__file__).resolve().parent.parent
 
@@ -249,6 +250,7 @@ class Config:
     storage: StorageConfig = field(default_factory=StorageConfig)
     files: FileConfig = field(default_factory=FileConfig)
     logging: LogConfig = field(default_factory=LogConfig)
+    admin: AdminHttpConfig = field(default_factory=AdminHttpConfig)
     #: Optional static admin password read from env (NOT from YAML).
     admin_password_env: str | None = "CSCP_ADMIN_PASSWORD"  # noqa: S105 -- env variable NAME, not a secret value
 
@@ -270,6 +272,7 @@ class Config:
             storage=StorageConfig.from_mapping(dict(m.get("storage", {}))),
             files=FileConfig.from_mapping(dict(m.get("files", {}))),
             logging=LogConfig.from_mapping(dict(m.get("logging", {}))),
+            admin=AdminHttpConfig.from_mapping(dict(m.get("admin", {}))),
             admin_password_env=m.get("admin_password_env"),
         )
 

@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from messaging.store import SQLiteMessageStore
+from server.admin import AdminHttpServer
 from server.config import Config
 from server.logging_setup import get_logger, setup_logging
 from server.server import CSCPServer
@@ -80,7 +81,17 @@ async def amain(args: argparse.Namespace) -> int:
     await server.start()
     log.info("server_ready", extra={"summary": server.summary()})
 
+    admin_http: AdminHttpServer | None = None
+    if cfg.admin.enable:
+        admin_http = AdminHttpServer(cfg.admin, server.summary)
+        bound = await admin_http.start()
+        log.info("admin_http_ready", extra={"host": cfg.admin.host_v4, "port": bound})
+    else:
+        log.info("admin_http_disabled")
+
     await shutdown_requested.wait()
+    if admin_http is not None:
+        await admin_http.shutdown()
     await server.shutdown()
     await store.close()
     log.info("exiting")
