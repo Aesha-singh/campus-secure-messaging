@@ -160,6 +160,7 @@ class CSCPServer:
     async def start(self) -> None:
         """Bind the IPv4 and/or IPv6 listeners (dual-stack)."""
         self._ssl_context = build_ssl_context(self.cfg.tls)
+        self.manager.ensure_default_channels(self.cfg.channels.default_channels)
 
         factories: list[tuple[str, str, int]] = []
         if self.cfg.net.enable_v4:

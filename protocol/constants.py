@@ -87,9 +87,17 @@ class MessageType(IntEnum):
     ERROR = 0x40
     DISCONNECT = 0x41
 
+    # 0x5_ -- channels (rooms): membership management plane
+    CHANNEL_CREATE = 0x50
+    CHANNEL_JOIN = 0x51
+    CHANNEL_LEAVE = 0x52
+    CHANNEL_LIST = 0x53
+    CHANNEL_INFO = 0x54
+    CHANNEL_LIST_END = 0x55
+
     @property
     def group(self) -> int:
-        """High-nibble group id (``0x0``..``0x4``)."""
+        """High-nibble group id (``0x0``..``0x5``)."""
         return (int(self) >> 4) & 0xF
 
 

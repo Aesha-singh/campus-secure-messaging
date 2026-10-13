@@ -39,12 +39,13 @@ class Peer(Protocol):
 class Channel:
     """A room (department / club / course / announcement) with role-based membership."""
 
-    __slots__ = ("channel_id", "name", "kind", "_members")
+    __slots__ = ("channel_id", "name", "kind", "owner_id", "_members")
 
     def __init__(self, channel_id: str, name: str, kind: str, owner_id: str) -> None:
         self.channel_id = channel_id
         self.name = name
         self.kind = kind
+        self.owner_id = owner_id
         self._members: dict[str, Role] = {owner_id: "owner"}
 
     def add(self, user_id: str, role: Role = "member") -> None:
@@ -69,6 +70,7 @@ class Channel:
             "channel_id": self.channel_id,
             "name": self.name,
             "kind": self.kind,
+            "created_by": self.owner_id,
             "members": dict(self._members),
         }
 
@@ -136,6 +138,40 @@ class ConnectionManager:
             ch.remove(peer_id)
             if not ch.member_ids:
                 self.channels.pop(channel_id, None)
+
+    def channel(self, channel_id: str) -> Channel | None:
+        return self.channels.get(channel_id)
+
+    def all_channels(self) -> tuple[Channel, ...]:
+        return tuple(self.channels.values())
+
+    def unique_channel_id(self, name: str) -> str:
+        """Slugify ``name`` into a stable, collision-free channel id.
+
+        Like a Git branch or a DNS label: lower-case, hyphen-separated, then
+        suffixed ``-2``, ``-3`` ... on collision so two rooms called "Project"
+        never share a history spine.
+        """
+        base = "".join(c if (c.isalnum() or c == "-") else "-" for c in name.strip().lower())
+        base = "-".join(filter(None, base.split("-"))) or "room"
+        base = base[:48]
+        if base not in self.channels:
+            return base
+        n = 2
+        while f"{base}-{n}" in self.channels:
+            n += 1
+        return f"{base}-{n}"
+
+    def ensure_default_channels(self, defaults: tuple[tuple[str, str, str], ...]) -> None:
+        """Seed system rooms (e.g. a campus lobby) at server start.
+
+        Uses a synthetic ``u_system`` owner so the room exists before any client
+        logs in; members join normally afterwards.
+        """
+        for channel_id, name, kind in defaults:
+            if channel_id not in self.channels:
+                ch = Channel(channel_id, name, kind, "u_system")
+                self.channels[channel_id] = ch
 
     def set_role(self, channel_id: str, actor: Peer, target: str, role: Role) -> bool:
         ch = self.channels.get(channel_id)

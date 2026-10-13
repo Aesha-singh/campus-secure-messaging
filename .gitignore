@@ -29,6 +29,10 @@ security/keys/**
 *.crt
 !docs/**/*.crt
 
+# Local env files (secrets); keep the .example templates tracked
+.env
+deploy/.env
+
 # Runtime data
 *.db
 *.db-journal

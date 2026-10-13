@@ -459,6 +459,101 @@ class MarkRead(Message):
 
 
 # --------------------------------------------------------------------------- #
+# Channels (rooms): the membership management plane
+# --------------------------------------------------------------------------- #
+#: Channel kinds the server understands.  ``public`` rooms anyone may join;
+#: ``private`` rooms are join-by-id only (the server still records the join);
+#: ``course``/``club`` are semantic labels surfaced in the UI.
+CHANNEL_KINDS: tuple[str, ...] = ("public", "private", "course", "club")
+
+
+@dataclass
+class ChannelCreate(Message):
+    """Create a room; the creator becomes its ``owner``."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_CREATE
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "name": FieldSpec("str", required=True),
+        "kind": FieldSpec("str", default="public"),
+    }
+
+    name: str
+    kind: str = "public"
+
+
+@dataclass
+class ChannelJoin(Message):
+    """Join an existing room (idempotent: joining twice is a no-op)."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_JOIN
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "channel_id": FieldSpec("str", required=True),
+    }
+
+    channel_id: str
+
+
+@dataclass
+class ChannelLeave(Message):
+    """Leave a room; an empty room is reaped by the server."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_LEAVE
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "channel_id": FieldSpec("str", required=True),
+    }
+
+    channel_id: str
+
+
+@dataclass
+class ChannelList(Message):
+    """Request the catalogue of rooms (optionally with member rosters)."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_LIST
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "include_members": FieldSpec("bool", default=True),
+    }
+
+    include_members: bool = True
+
+
+@dataclass
+class ChannelInfo(Message):
+    """One room's metadata + the requesting user's role (create/join/list resp)."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_INFO
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "channel_id": FieldSpec("str", required=True),
+        "name": FieldSpec("str", required=True),
+        "kind": FieldSpec("str", required=True),
+        "role": FieldSpec("str", required=True),
+        "created_by": FieldSpec("str", required=True),
+        "members": FieldSpec("list_str", default=[]),
+        "member_count": FieldSpec("int", default=0),
+    }
+
+    channel_id: str
+    name: str
+    kind: str
+    role: str
+    created_by: str
+    members: list[str] = field(default_factory=list)
+    member_count: int = 0
+
+
+@dataclass
+class ChannelListEnd(Message):
+    """Sentinel marking the end of a ``CHANNEL_LIST`` batch (like ``SYNC_END``)."""
+
+    TYPE: ClassVar[MessageType] = MessageType.CHANNEL_LIST_END
+    _SCHEMA: ClassVar[dict[str, FieldSpec]] = {
+        "count": FieldSpec("int", default=0),
+    }
+
+    count: int = 0
+
+
+# --------------------------------------------------------------------------- #
 # File transfer
 # --------------------------------------------------------------------------- #
 @dataclass
@@ -476,6 +571,7 @@ class FileOffer(Message):
         "recipient_id": FieldSpec("str", required=True),
         "ts": FieldSpec("float", required=True),
         "wrapped_key": FieldSpec("bytes"),
+        "sender_id": FieldSpec("str"),
     }
 
     transfer_id: str
@@ -487,6 +583,7 @@ class FileOffer(Message):
     recipient_id: str
     ts: float
     wrapped_key: bytes | None = None
+    sender_id: str | None = None
 
 
 @dataclass
@@ -637,6 +734,12 @@ _ALL_MESSAGES = (
     SyncEnd,
     Unread,
     MarkRead,
+    ChannelCreate,
+    ChannelJoin,
+    ChannelLeave,
+    ChannelList,
+    ChannelInfo,
+    ChannelListEnd,
     FileOffer,
     FileAccept,
     FileChunk,

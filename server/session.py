@@ -47,10 +47,17 @@ from protocol.errors import (
     UnknownMessageTypeError,
 )
 from protocol.messages import (
+    CHANNEL_KINDS,
     Ack,
     AuthFail,
     AuthOk,
     AuthReq,
+    ChannelCreate,
+    ChannelInfo,
+    ChannelJoin,
+    ChannelLeave,
+    ChannelList,
+    ChannelListEnd,
     Disconnect,
     Error,
     FileAccept,
@@ -112,6 +119,10 @@ _LEGAL: dict[SessionState, frozenset[MessageType]] = {
             MessageType.FILE_RESUME,
             MessageType.SYNC_REQ,
             MessageType.MARK_READ,
+            MessageType.CHANNEL_CREATE,
+            MessageType.CHANNEL_JOIN,
+            MessageType.CHANNEL_LEAVE,
+            MessageType.CHANNEL_LIST,
             MessageType.PING,
             MessageType.PONG,
             MessageType.ERROR,
@@ -562,10 +573,95 @@ class Session:
         await self.send(Unread(convo_unread=counts, server_time=time.time()))
 
     # ------------------------------------------------------------------ #
+    # Channels (rooms): membership management plane
+    # ------------------------------------------------------------------ #
+    def _channel_info(self, channel_id: str, viewer_id: str) -> ChannelInfo | None:
+        ch = self.ctx.manager.channel(channel_id)
+        if ch is None:
+            return None
+        members = ch.member_ids
+        return ChannelInfo(
+            channel_id=ch.channel_id,
+            name=ch.name,
+            kind=ch.kind,
+            role=ch.role_of(viewer_id) or "guest",
+            created_by=ch.owner_id,
+            members=list(members),
+            member_count=len(members),
+        )
+
+    async def _on_channel_create(self, frame: Frame, msg: ChannelCreate) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        name = msg.name.strip()
+        if not name or len(name) > 64:
+            await self._send_error(ErrorCode.BAD_REQUEST, "channel name must be 1..64 chars", fatal=False)
+            return
+        kind = msg.kind if msg.kind in CHANNEL_KINDS else "public"
+        channel_id = self.ctx.manager.unique_channel_id(name)
+        self.ctx.manager.create_channel(channel_id, name, kind, _as_peer(self))
+        info = self._channel_info(channel_id, self.user_id)
+        if info is not None:
+            await self.send(info, flags=FrameFlags.RESPONSE)
+        log.info(
+            "channel_created",
+            extra={"connection_id": self.connection_id, "channel_id": channel_id, "by": self.user_id},
+        )
+
+    async def _on_channel_join(self, frame: Frame, msg: ChannelJoin) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        ch = self.ctx.manager.channel(msg.channel_id)
+        if ch is None:
+            await self._send_error(ErrorCode.NOT_FOUND, "no such channel", fatal=False)
+            return
+        self.ctx.manager.join_channel(msg.channel_id, _as_peer(self))
+        info = self._channel_info(msg.channel_id, self.user_id)
+        if info is not None:
+            await self.send(info, flags=FrameFlags.RESPONSE)
+        log.info(
+            "channel_joined",
+            extra={"connection_id": self.connection_id, "channel_id": msg.channel_id, "by": self.user_id},
+        )
+
+    async def _on_channel_leave(self, frame: Frame, msg: ChannelLeave) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        self.ctx.manager.leave_channel(msg.channel_id, self.user_id)
+        log.info(
+            "channel_left",
+            extra={"connection_id": self.connection_id, "channel_id": msg.channel_id, "by": self.user_id},
+        )
+
+    async def _on_channel_list(self, frame: Frame, msg: ChannelList) -> None:  # noqa: ARG002
+        self._require_active()
+        assert self.user_id is not None
+        channels = self.ctx.manager.all_channels()
+        for ch in channels:
+            info = self._channel_info(ch.channel_id, self.user_id)
+            if info is not None:
+                if not msg.include_members:
+                    info = ChannelInfo(
+                        channel_id=info.channel_id,
+                        name=info.name,
+                        kind=info.kind,
+                        role=info.role,
+                        created_by=info.created_by,
+                        members=[],
+                        member_count=info.member_count,
+                    )
+                await self.send(info)
+        await self.send(ChannelListEnd(count=len(channels)), flags=FrameFlags.RESPONSE)
+
+    # ------------------------------------------------------------------ #
     # File transfer (store-and-forward relay)
     # ------------------------------------------------------------------ #
     async def _on_file_offer(self, frame: Frame, msg: FileOffer) -> None:
         self._require_active()
+        # Stamp the authenticated sender so a recipient can wrap/unwrap the file
+        # key against the true origin and a client cannot spoof who sent a file.
+        assert self.user_id is not None
+        msg.sender_id = self.user_id
         error, transfer = await self.ctx.transfers.offer(_as_peer(self), msg)
         if error is not None:
             await self._send_error(
@@ -740,6 +836,10 @@ _HANDLERS: dict[MessageType, Any] = {
     MessageType.ACK: Session._on_ack,
     MessageType.SYNC_REQ: Session._on_sync_req,
     MessageType.MARK_READ: Session._on_mark_read,
+    MessageType.CHANNEL_CREATE: Session._on_channel_create,
+    MessageType.CHANNEL_JOIN: Session._on_channel_join,
+    MessageType.CHANNEL_LEAVE: Session._on_channel_leave,
+    MessageType.CHANNEL_LIST: Session._on_channel_list,
     MessageType.FILE_OFFER: Session._on_file_offer,
     MessageType.FILE_ACCEPT: Session._on_file_accept,
     MessageType.FILE_CHUNK: Session._on_file_chunk,

@@ -216,6 +216,31 @@ class FileConfig:
 
 
 @dataclass(slots=True)
+class ChannelsConfig:
+    """Default rooms seeded at start; membership is otherwise protocol-driven."""
+
+    default_channels: tuple[tuple[str, str, str], ...] = (("lobby", "Campus Lobby", "public"),)
+
+    @classmethod
+    def from_mapping(cls, m: Mapping[str, Any]) -> ChannelsConfig:
+        raw = m.get("default_channels")
+        if not raw:
+            return cls()
+        parsed: list[tuple[str, str, str]] = []
+        for entry in raw:
+            if isinstance(entry, Mapping):
+                parsed.append(
+                    (str(entry["id"]), str(entry.get("name", entry["id"])), str(entry.get("kind", "public")))
+                )
+            else:  # "id:name:kind" compact string form
+                parts = str(entry).split(":")
+                parsed.append(
+                    (parts[0], parts[1] if len(parts) > 1 else parts[0], parts[2] if len(parts) > 2 else "public")
+                )
+        return cls(default_channels=tuple(parsed))
+
+
+@dataclass(slots=True)
 class LogConfig:
     level: str = "INFO"
     json: bool = True
@@ -249,6 +274,7 @@ class Config:
     rate: RateConfig = field(default_factory=RateConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     files: FileConfig = field(default_factory=FileConfig)
+    channels: ChannelsConfig = field(default_factory=ChannelsConfig)
     logging: LogConfig = field(default_factory=LogConfig)
     admin: AdminHttpConfig = field(default_factory=AdminHttpConfig)
     #: Optional static admin password read from env (NOT from YAML).
@@ -271,6 +297,7 @@ class Config:
             rate=RateConfig.from_mapping(dict(m.get("rate", {}))),
             storage=StorageConfig.from_mapping(dict(m.get("storage", {}))),
             files=FileConfig.from_mapping(dict(m.get("files", {}))),
+            channels=ChannelsConfig.from_mapping(dict(m.get("channels", {}))),
             logging=LogConfig.from_mapping(dict(m.get("logging", {}))),
             admin=AdminHttpConfig.from_mapping(dict(m.get("admin", {}))),
             admin_password_env=m.get("admin_password_env"),
