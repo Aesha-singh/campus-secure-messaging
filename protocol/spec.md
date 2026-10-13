@@ -249,6 +249,64 @@ watermarked (`since_ts`) for pagination and capped by `limit`/server policy.
 
 ---
 
+## 8b. File transfer: store-and-forward relay
+
+Files are transferred as **encrypted chunks relayed through the server**, so the
+server never sees plaintext (the per-file key is wrapped for the recipient with
+the E2EE channel). The relay is a pure store-and-forward service with flow
+control and resume.
+
+### Negotiation
+
+```
+  Sender                         Server                        Recipient
+    |-- FILE_OFFER --------------->|  name,size,sha256,mime,wrapped_key
+    |                              |  (quota reserved; blob pre-sized)
+    |<-- ACK(msg_id=tid) ----------|
+    ...
+    |-- FILE_DONE ---------------->|  whole-file sha256,size
+    |<-- ACK(delivered) -----------|  blob kept until recipient fetches
+```
+
+`FILE_OFFER` always gets an unconditional `ACK` (even without `ACK_REQUESTED`)
+so the sender never blocks on a lost offer.
+
+### Chunking and the sliding window
+
+* The file is split into `chunk_size` (default 64 KiB) pieces; chunk *i* is
+  written into a sparse blob at offset `i * chunk_size`. The **tail chunk is
+  clamped** to `size - i*chunk_size` so the stored blob length equals the file
+  length exactly.
+* The receiver ACKs the **highest contiguous chunk received** as a *cumulative
+  watermark*: `ACK.msg_id = "<tid>:w<watermark>"`. A missing chunk therefore
+  stalls the watermark, and only the gap needs retransmission — a classic
+  go-back-N / selective-ACK hybrid without a separate bitmap.
+* The sender pipelines up to a window of in-flight chunks (`URGENT` flag may
+  pre-empt bulk chunks at the scheduler).
+
+### Resume
+
+After a drop the receiver resumes by byte offset:
+
+```
+  FILE_RESUME(last_ack_index, last_ack_offset)
+  ACK(msg_id = "<tid>:r<n>")   # server replays stored chunks from index n
+```
+
+Because chunks are prefix-verified and addressed by offset, a resumed transfer
+is indistinguishable from a fresh one apart from the starting index.
+
+### Integrity, quotas, lifecycle
+
+* `FILE_DONE` carries the whole-file SHA-256; the receiver verifies the
+  assembled blob before delivering it to the user.
+* Each user has a byte `quota_bytes`; capacity is **reserved at offer time** and
+  **refunded** if the transfer is refused or expires.
+* Blobs have a `ttl_seconds` and are swept when expired; orphaned reservations
+  are reclaimed by the same sweep.
+
+---
+
 ## 9. Security layering
 
 ```
@@ -277,6 +335,10 @@ E2EE AEAD (end-to-end). See `security/threat_model.md` for the STRIDE analysis.
 | Roles, presence, channels | `server/manager.py` |
 | Offline queue, history, unread | `server/storage.py` (Protocol + RAM) / `messaging/store.py` (SQLite) |
 | Messaging session handlers | `server/session.py` |
+| File relay + window/resume/quota | `server/transfer.py` |
+| Telemetry counters | `server/metrics.py` |
+| HTTP admin dashboard | `server/admin.py` |
+| Client transport / session / E2EE / store | `client/transport.py`, `client/session.py`, `client/crypto.py`, `client/store.py` |
 
 Tests: `tests/protocol/` (boundaries, malformed, oversized, truncated,
 coalesced, replay, and Hypothesis fuzzing).
