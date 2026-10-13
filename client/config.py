@@ -60,6 +60,9 @@ class ClientConfig:
     totp_env: str | None = "CSCP_TOTP"
     data_dir: str = "data/client"
     receive_dir: str = "downloads"
+    # mDNS/DNS-SD discovery of servers on the LAN.
+    discovery_service_type: str = "_cscp._tcp.local."
+    discovery_timeout: float = 3.0
 
     @classmethod
     def from_mapping(cls, m: Mapping[str, Any]) -> ClientConfig:
@@ -87,6 +90,8 @@ class ClientConfig:
             totp_env=m.get("totp_env"),
             data_dir=_resolve(m.get("data_dir", "data/client")) or "data/client",
             receive_dir=_resolve(m.get("receive_dir", "downloads")) or "downloads",
+            discovery_service_type=str(m.get("discovery_service_type", "_cscp._tcp.local.")),
+            discovery_timeout=float(m.get("discovery_timeout", 3.0)),
         )
 
     @classmethod

@@ -46,6 +46,8 @@ class NetConfig:
     host_v6: str = "::"  # noqa: S104 -- intentional: server binds all interfaces
     port: int = 9443
     mdns_name: str = "cscp-campus.local"
+    mdns_enable: bool = False  # advertise the CSCP service over mDNS/Bonjour
+    mdns_service_type: str = "_cscp._tcp.local."
 
     @classmethod
     def from_mapping(cls, m: Mapping[str, Any]) -> NetConfig:
@@ -56,6 +58,8 @@ class NetConfig:
             host_v6=str(m.get("host_v6", "::")),  # noqa: S104 -- server binds all interfaces
             port=int(m.get("port", 9443)),
             mdns_name=str(m.get("mdns_name", "cscp-campus.local")),
+            mdns_enable=bool(m.get("mdns_enable", False)),
+            mdns_service_type=str(m.get("mdns_service_type", "_cscp._tcp.local.")),
         )
 
 

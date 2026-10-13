@@ -28,7 +28,10 @@ import secrets
 import ssl
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from server.mdns import MdnsAdvertiser
 
 from protocol.constants import ErrorCode
 from protocol.messages import Error
@@ -156,6 +159,7 @@ class CSCPServer:
         self._sem = asyncio.Semaphore(cfg.limits.max_connections)
         self._stopping = False
         self._ssl_context: ssl.SSLContext | None = None
+        self._mdns: MdnsAdvertiser | None = None
 
     async def start(self) -> None:
         """Bind the IPv4 and/or IPv6 listeners (dual-stack)."""
@@ -187,6 +191,29 @@ class CSCPServer:
                 "listening",
                 extra={"family": listener.family, "address": listener.address, "tls": self._ssl_context is not None},
             )
+        await self._start_mdns()
+
+    async def _start_mdns(self) -> None:
+        """Advertise the service over mDNS when enabled (best-effort)."""
+        if not self.cfg.net.mdns_enable:
+            return
+        from server.mdns import MdnsAdvertiser, local_addresses
+
+        port = self.cfg.net.port
+        if self.listeners and isinstance(self.listeners[0].address, tuple):
+            port = self.listeners[0].address[1]
+        self._mdns = MdnsAdvertiser(
+            instance_name="Campus CSCP",
+            port=port,
+            addresses=local_addresses(
+                self.cfg.net.host_v4 if self.cfg.net.enable_v4 else None,
+                self.cfg.net.host_v6 if self.cfg.net.enable_v6 else None,
+            ),
+            service_type=self.cfg.net.mdns_service_type,
+            host_name=self.cfg.net.mdns_name,
+            properties={"proto": "1", "tls": "1" if self.is_tls else "0"},
+        )
+        await self._mdns.start()
 
     async def _on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await self._sem.acquire()
@@ -217,6 +244,9 @@ class CSCPServer:
             return
         self._stopping = True
         log.info("shutdown_begin", extra={"active_sessions": len(self.sessions)})
+        if self._mdns is not None:
+            await self._mdns.stop()
+            self._mdns = None
 
         # 1. Stop accepting new work.  NOTE: we deliberately do NOT await
         #    `wait_closed()` here -- it blocks until every active connection

@@ -49,6 +49,9 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = ["error::DeprecationWarning"]
 addopts = "-q"
+markers = [
+    "integration: tests that rely on host networking (mDNS multicast, etc.)",
+]
 
 [tool.ruff]
 line-length = 119
