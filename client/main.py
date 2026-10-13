@@ -20,12 +20,15 @@ from client.config import ClientConfig
 from client.crypto import ClientCrypto, load_or_create_identity
 from client.session import ClientCallbacks, ClientSession
 from client.store import ClientStore
+from client.ui.app import run_gui
+from server.storage import convo_key
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cscp-client", description="CSCP secure messaging client (console)")
+    p = argparse.ArgumentParser(prog="cscp-client", description="CSCP secure messaging client (console + GUI)")
     p.add_argument("--config", default="config/client.yaml", help="client YAML config")
-    p.add_argument("--username", required=True)
+    p.add_argument("--gui", action="store_true", help="launch the PyQt6 desktop client")
+    p.add_argument("--username", default=None)
     p.add_argument("--password", default=None)
     p.add_argument("--totp", default=None)
     p.add_argument("--peer", default="bob", help="default conversation partner")
@@ -125,7 +128,7 @@ def _peer_for(session: ClientSession, args: argparse.Namespace) -> str:
 
 
 def _convo(a: str, b: str) -> str:
-    return "dm:" + ":".join(sorted((a, b)))
+    return convo_key("dm", a, b)
 
 
 async def _connected_flag(session: ClientSession) -> None:
@@ -139,6 +142,18 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
+    if args.gui:
+        base = dict(ClientConfig.from_yaml(args.config).as_dict()) if args.config else {}
+        if args.username:
+            base["username"] = args.username
+        if args.password:
+            base["password"] = args.password
+        if args.totp:
+            base["totp"] = args.totp
+        return run_gui(base)
+    if not args.username:
+        build_parser().error("--username is required unless --gui is given")
+    assert args.username is not None
     try:
         return asyncio.run(run(args))
     except KeyboardInterrupt:

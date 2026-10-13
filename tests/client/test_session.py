@@ -16,6 +16,7 @@ from client.store import ClientStore
 from server.auth import StubAuthenticator
 from server.config import Config
 from server.server import CSCPServer
+from server.storage import convo_key
 
 ALICE = "alice"
 BOB = "bob"
@@ -199,8 +200,9 @@ async def _bob2_got_chat(h) -> None:  # type: ignore[no-untyped-def]
 
 async def _wait_bob_message(session: ClientSession) -> None:
     """Busy-wait until the session's store has a received message."""
+    convo = convo_key("dm", "u_alice", "u_bob")
     while True:
-        rows = await session.store.history("dm:u_alice:u_bob", limit=100)
+        rows = await session.store.history(convo, limit=100)
         if any(r.direction == "recv" for r in rows):
             return
         await asyncio.sleep(0.05)

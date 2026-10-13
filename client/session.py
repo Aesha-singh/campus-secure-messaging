@@ -66,6 +66,7 @@ from protocol.messages import (
     Unread,
     decode_message,
 )
+from server.storage import convo_key
 
 log = logging.getLogger("cscp.client.session")
 
@@ -437,4 +438,5 @@ class ClientSession:
 
 
 def _convo_channel(a: str, b: str) -> str:
-    return "dm:" + ":".join(sorted((a, b)))
+    """Server-compatible direct message key: ``dm:<sorted-a|b>``."""
+    return convo_key("dm", a, b)
