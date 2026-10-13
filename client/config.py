@@ -59,6 +59,7 @@ class ClientConfig:
     password_env: str | None = "CSCP_PASSWORD"  # noqa: S105 -- env variable NAME, not a secret
     totp_env: str | None = "CSCP_TOTP"
     data_dir: str = "data/client"
+    receive_dir: str = "downloads"
 
     @classmethod
     def from_mapping(cls, m: Mapping[str, Any]) -> ClientConfig:
@@ -85,6 +86,7 @@ class ClientConfig:
             password_env=m.get("password_env"),
             totp_env=m.get("totp_env"),
             data_dir=_resolve(m.get("data_dir", "data/client")) or "data/client",
+            receive_dir=_resolve(m.get("receive_dir", "downloads")) or "downloads",
         )
 
     @classmethod

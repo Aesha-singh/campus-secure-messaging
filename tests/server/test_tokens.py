@@ -27,7 +27,9 @@ def test_token_roundtrip() -> None:
 
 def test_tampered_token_rejected() -> None:
     token, _ = issue_token(_SECRET, subject="u1", claims={}, ttl_seconds=60)
-    tampered = "A" + token[1:]
+    # Flip the final character to a *different* value so the signature no longer
+    # matches (using a fixed replacement could be a no-op if it already matched).
+    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
     assert verify_token(_SECRET, tampered) is None
 
 
