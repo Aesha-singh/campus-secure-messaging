@@ -39,8 +39,8 @@ dev = [
 [project.scripts]
 cscp-server = "server.main:main"
 
-[tool.setuptools]
-packages = ["protocol", "server", "client", "admin", "security"]
+[tool.setuptools.packages.find]
+include = ["protocol*", "server*", "client*", "security*", "messaging*", "admin*"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

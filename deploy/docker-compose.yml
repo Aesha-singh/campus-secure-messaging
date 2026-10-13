@@ -1,0 +1,34 @@
+# Single-node CSCP deployment.
+#
+# Secrets are supplied via a sibling .env file (never committed):
+#   CSCP_SERVER_SECRET=<32+ random bytes>
+#   CSCP_ADMIN_PASSWORD=<admin console password>
+#   CSCP_ADMIN_TOKEN=<bearer token for GET /metrics>
+#
+# Generate certificates first:  python -m security.certs --outdir security/certs
+services:
+  cscp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: cscp-server:0.1.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "9443:9443"            # CSCP protocol (TLS 1.3)
+      - "127.0.0.1:9444:9444"  # admin dashboard, loopback only
+    volumes:
+      - ./server.prod.yaml:/app/config/config.yaml:ro
+      - ../security/certs:/app/security/certs:ro
+      - ../data:/app/data      # message DB + relayed blobs
+      - ../logs:/app/logs
+    read_only: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 512M

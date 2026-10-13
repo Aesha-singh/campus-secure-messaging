@@ -1,0 +1,23 @@
+# Build context exclusions for the CSCP server image.
+.git
+.gitignore
+.github
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+env
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+data
+logs
+captures
+docs
+tests
+deploy
+*.md
+!README.md
+.env

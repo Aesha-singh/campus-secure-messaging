@@ -1,0 +1,47 @@
+[Unit]
+Description=Campus Secure Messaging (CSCP) server
+Documentation=https://github.com/Aesha-singh/campus-secure-messaging
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cscp
+Group=cscp
+WorkingDirectory=/opt/cscp
+
+# Secrets live in this file (root:cscp 0640), e.g.
+#   CSCP_SERVER_SECRET=...
+#   CSCP_ADMIN_PASSWORD=...
+#   CSCP_ADMIN_TOKEN=...
+EnvironmentFile=/etc/cscp/cscp.env
+
+ExecStart=/opt/cscp/.venv/bin/cscp-server --config /etc/cscp/server.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+# --- Hardening -------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cscp/data /opt/cscp/logs
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# --- Resource limits -------------------------------------------------------
+LimitNOFILE=65535
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
