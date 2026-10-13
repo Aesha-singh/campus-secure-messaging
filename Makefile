@@ -2,7 +2,7 @@
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-.PHONY: help venv install test lint type check certs server client cli demo bench capture up down logs client-stack clean
+.PHONY: help venv install test lint type check certs server provision serve-local client cli demo bench capture up down logs client-stack clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +31,13 @@ certs: ## Generate the local CA + server + client certificates
 
 server: ## Run the server (stub auth, PLAIN mode if no certs)
 	$(PY) -m server.main --auth stub
+
+provision: ## Provision the demo Argon2id accounts (alice/bob) for the local stack
+	$(PY) -c "from security.auth import provision_default_db as p; p('security/users.yaml', {'alice':'campus-demo1','bob':'campus-demo1'}, roles={'alice':'staff','bob':'member'})"
+	@echo "users.yaml written; log in as alice/bob with password campus-demo1"
+
+serve-local: ## Run the server for the local stack (TLS 1.3 + mTLS + Argon2id)
+	CSCP_SERVER_SECRET=$${CSCP_SERVER_SECRET:-local-dev-secret} $(PY) -m server.main --config deploy/server.local.yaml
 
 client: ## Launch the PyQt6 desktop client
 	$(PY) -m client.main --gui --config config/client.yaml
