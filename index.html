@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Campus Secure Messaging – CSCP over TLS 1.3 + E2EE</title>
+  <meta name="description" content="Secure campus messaging with CSCP protocol over TLS 1.3+mTLS, X25519 E2EE, channels, store-and-forward." />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%234d7cff'/%3E%3Cpath d='M30 60l20-12 20 12-20 12-20-12z' fill='%23fff' opacity='.9'/%3E%3Cpath d='M30 48l20-12 20 12-20 12-20-12z' fill='%23fff' opacity='.6'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="logo">
+        <span class="logo-dot"></span>
+        <span>Campus Secure Messaging</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#get-started">Get Started</a>
+        <a class="btn btn-ghost" href="https://github.com/Aesha-singh/campus-secure-messaging" target="_blank" rel="noreferrer">GitHub</a>
+        <a class="btn btn-primary" href="#get-started">Run Locally</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="container hero-inner">
+        <div>
+          <h1>Secure campus messaging with E2EE</h1>
+          <p>CSCP over <strong>TLS 1.3 + mTLS</strong>, X25519→HKDF-SHA256→AES-256-GCM with per-message ratchet, store-and-forward, channels, mDNS discovery, PyQt6 desktop client, and live admin dashboard.</p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="#get-started">Quick Start</a>
+            <a class="btn btn-ghost" href="https://github.com/Aesha-singh/campus-secure-messaging" target="_blank" rel="noreferrer">View Repo</a>
+          </div>
+          <div class="badges">
+            <span class="badge">TLS 1.3 • mTLS</span>
+            <span class="badge">E2EE • X25519 • AES-256-GCM</span>
+            <span class="badge">Argon2id • TOTP 2FA</span>
+            <span class="badge">Store-and-Forward</span>
+            <span class="badge">mDNS/DNS-SD</span>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="window-bar"><div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><span>make up</span></div>
+          <div class="hero-card-inner">
+            <div class="terminal mono">
+<span class="prompt">$</span> <span class="cmd">cd campus-secure-messaging</span>
+<span class="prompt">$</span> <span class="cmd">make up</span>
+<span class="out">CSCP :9443 • Admin :9444</span>
+<span class="out">PKI + demo accounts ready</span>
+            </div>
+            <div class="terminal mono"><span class="out">Demo: <strong>alice / bob</strong> — <strong>campus-demo1</strong></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="features">
+      <div class="container">
+        <h2 class="section-title">Features</h2>
+        <div class="grid features">
+          <article class="card"><h3>CSCP + TLS 1.3+mTLS</h3><p>Length-delimited binary frames (CRC32+MessagePack), single-threaded asyncio, ciphertext-only relay.</p></article>
+          <article class="card"><h3>E2EE</h3><p>X25519 key exchange, HKDF-SHA256, AES-256-GCM with per-message ratchet, TOFU pinning.</p></article>
+          <article class="card"><h3>Store-and-Forward</h3><p>Offline messages/files persisted (SQLite/WAL), replayed on reconnect with unread sync.</p></article>
+          <article class="card"><h3>Files + Channels</h3><p>Chunked transfer with sliding-window ACK, resume, quotas; server-mediated channels with live fan-out.</p></article>
+          <article class="card"><h3>mDNS + Diagnostics</h3><p>LAN discovery via <code>_cscp._tcp.local.</code>, live RTT/jitter/loss in PyQt6 client.</p></article>
+          <article class="card"><h3>Admin Dashboard</h3><p>Stdlib HTTP/1.1 on :9444 serving <code>/health</code>, <code>/metrics</code>, live Canvas charts, optional Bearer token.</p></article>
+        </div>
+      </div>
+    </section>
+    <section id="get-started">
+      <div class="container">
+        <h2 class="section-title">Get Started</h2>
+        <article class="card">
+          <h3>Docker (Recommended)</h3>
+          <div class="code-block"><pre class="mono"><span class="prompt">$</span> git clone https://github.com/Aesha-singh/campus-secure-messaging.git
+<span class="prompt">$</span> cd campus-secure-messaging
+<span class="prompt">$</span> make up
+<span class="prompt">$</span> make client-stack</pre></div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer><div class="container footer-inner"><div>© <span id="y"></span> Campus Secure Messaging • <a href="https://github.com/Aesha-singh">Aesha Singh</a></div></div></footer>
+  <script>document.getElementById('y').textContent=new Date().getFullYear();</script>
+</body>
+</html>
