@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campus Secure Messaging</title>
+<meta name="description" content="Secure campus messaging and file sharing over a custom binary protocol, TLS 1.3 and end-to-end encryption.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D1117;font-family:'Space Grotesk',system-ui,sans-serif;color:#C9D1D9}
+a{color:#3DDC97;text-decoration:none}a:hover{color:#9CF3CB}
+.card{background:#151B23;border:1px solid #263040;border-radius:10px;padding:24px}
+.lbl{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#3DDC97}
+.mono{font-family:'JetBrains Mono',monospace}
+h2{margin:8px 0 12px;font-size:36px;line-height:1.15;color:#F0F6FC}
+h3{margin:0 0 8px;font-size:19px;color:#F0F6FC}
+p{margin:0;line-height:1.6;color:#9AA7B4}
+</style>
+
+</head>
+<body>
+
+<div style="width:100%;background:#0D1117;color:#C9D1D9">
+
+<div style="max-width:1120px;margin:0 auto;padding:20px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+<span class="mono" style="font-weight:600;color:#F0F6FC">CSCP<span style="color:#3DDC97">/</span>campus</span>
+<nav style="display:flex;gap:24px;flex-wrap:wrap;font-size:15px"><a href="#protocol">Protocol</a><a href="#security">Security</a><a href="#networking">Networking</a><a href="#numbers">Numbers</a><a href="#demo">Live demo</a><a href="#run">Run it</a></nav>
+</div>
+
+<section style="max-width:1120px;margin:0 auto;padding:72px 32px 56px">
+<div class="lbl">Computer Networks project · VIT Vellore</div>
+<h1 style="margin:16px 0 20px;font-size:68px;line-height:1.02;color:#F0F6FC;max-width:860px">Campus messaging that the network itself can't read.</h1>
+<p style="font-size:20px;max-width:700px">A secure chat and file-sharing system for a university campus, built from the sockets up on a custom binary protocol, TLS 1.3 with mutual authentication, and end-to-end encryption.</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:32px">
+<a href="https://github.com/Aesha-singh/campus-secure-messaging" style="background:#3DDC97;color:#0D1117;font-weight:700;padding:14px 24px;border-radius:8px;min-height:20px">View the code on GitHub</a>
+<a href="#demo" style="border:1px solid #3A475A;color:#F0F6FC;padding:14px 24px;border-radius:8px">Try the live demo</a>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:56px">
+<div class="card"><div class="mono" style="font-size:30px;color:#F0F6FC">TLS 1.3</div><p style="margin-top:6px">mutual TLS plus certificate pinning</p></div>
+<div class="card"><div class="mono" style="font-size:30px;color:#F0F6FC">AES-256-GCM</div><p style="margin-top:6px">per-message ratchet, server sees only ciphertext</p></div>
+<div class="card"><div class="mono" style="font-size:30px;color:#F0F6FC">~10.5k</div><p style="margin-top:6px">lines of Python, tested end to end</p></div>
+<div class="card"><div class="mono" style="font-size:30px;color:#F0F6FC">1 loop</div><p style="margin-top:6px">single-threaded asyncio, epoll/kqueue</p></div>
+</div>
+</section>
+
+<section id="protocol" style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">Application layer</div>
+<h2>CSCP: a protocol designed, not borrowed</h2>
+<p style="max-width:720px">Every message is a length-delimited binary frame, so TCP's byte stream is cut back into messages reliably, with integrity checked on every frame.</p>
+<div style="margin-top:28px;overflow-x:auto"><div style="display:flex;gap:4px;min-width:760px" class="mono">
+<div style="flex:4;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">magic</div><div style="font-size:12px;color:#8B98A5">4 B</div></div>
+<div style="flex:1;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">ver</div><div style="font-size:12px;color:#8B98A5">1 B</div></div>
+<div style="flex:1;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">type</div><div style="font-size:12px;color:#8B98A5">1 B</div></div>
+<div style="flex:2;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">flags</div><div style="font-size:12px;color:#8B98A5">2 B</div></div>
+<div style="flex:4;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">length</div><div style="font-size:12px;color:#8B98A5">4 B</div></div>
+<div style="flex:8;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">sequence</div><div style="font-size:12px;color:#8B98A5">8 B</div></div>
+<div style="flex:14;background:#12301F;border:1px solid #3DDC97;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">payload (MessagePack)</div><div style="font-size:12px;color:#8B98A5">up to 16 MiB</div></div>
+<div style="flex:4;background:#1D2A3A;border:1px solid #3A475A;border-radius:6px;padding:14px 8px;text-align:center"><div style="color:#F0F6FC">CRC32</div><div style="font-size:12px;color:#8B98A5">4 B</div></div>
+</div></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:28px">
+<div class="card"><h3>Message types</h3><p>Hello, auth, direct and group messages, ACK, typing, presence, sync, read marks, file offer, chunk, resume, ping and error frames.</p></div>
+<div class="card"><h3>Replay and DoS guards</h3><p>Sequence numbers reject replayed frames, and a hard frame-size limit protects the server from memory exhaustion.</p></div>
+<div class="card"><h3>Fuzzed and tested</h3><p>Framing, partial reads, malformed and oversized frames are covered by codec and fuzz tests.</p></div>
+</div>
+</section>
+
+<section id="security" style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">Defense in depth</div>
+<h2>Three layers between a message and an eavesdropper</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:24px">
+<div class="card"><div class="mono" style="color:#3DDC97;font-size:13px">LAYER 1 · TRANSPORT</div><h3 style="margin-top:10px">TLS 1.3 with mutual auth</h3><p>A local CA signs the server and client certificates. Clients pin the server certificate, so a man-in-the-middle with a forged cert is rejected.</p></div>
+<div class="card"><div class="mono" style="color:#3DDC97;font-size:13px">LAYER 2 · IDENTITY</div><h3 style="margin-top:10px">Argon2id and TOTP</h3><p>Salted Argon2id password hashes, time-based 2FA, token-bucket rate limiting and lockout against brute force.</p></div>
+<div class="card"><div class="mono" style="color:#3DDC97;font-size:13px">LAYER 3 · END TO END</div><h3 style="margin-top:10px">X25519 → HKDF → AES-GCM</h3><p>Keys are agreed between devices and pinned out of band (TOFU). The server stores and relays ciphertext only.</p></div>
+</div>
+<p style="margin-top:20px">The full STRIDE threat model is written up in the repository under <span class="mono">docs/threat_model.md</span>.</p>
+</section>
+
+<section style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">Features</div>
+<h2>Built like a real service</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:24px">
+<div class="card"><h3>Store and forward</h3><p>Offline messages persist in SQLite (WAL) and replay on reconnect, with unread badges and history sync.</p></div>
+<div class="card"><h3>Reliable delivery</h3><p>ACK correlation and msg_id de-duplication turn at-least-once delivery into effectively-once.</p></div>
+<div class="card"><h3>File relay</h3><p>Encrypted chunked transfer with a sliding window, resume from a byte offset, per-user quotas and TTL cleanup.</p></div>
+<div class="card"><h3>Desktop client</h3><p>PyQt6 with qasync, so one event loop owns both the socket and the widgets. Shows live transport status.</p></div>
+<div class="card"><h3>Admin endpoint</h3><p>A hand-rolled HTTP/1.1 listener on its own port serves JSON metrics and a health check.</p></div>
+<div class="card"><h3>Deployable</h3><p>Docker, docker-compose and a hardened systemd unit, with production TLS config and secret handling.</p></div>
+</div>
+</section>
+
+<section id="networking" style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">For the viva</div>
+<h2>Every feature maps to a networking concept</h2>
+<div class="card" style="margin-top:24px;padding:8px 24px;overflow-x:auto"><div style="min-width:640px">
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">Dual-stack listeners</div><div style="flex:1.2;color:#9AA7B4">IPv4 and IPv6, multiplexing on one event loop</div></div>
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">Length prefix and CRC32</div><div style="flex:1.2;color:#9AA7B4">Message vs stream boundaries, integrity</div></div>
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">TLS 1.3, mTLS, pinning</div><div style="flex:1.2;color:#9AA7B4">Confidentiality and authentication</div></div>
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">PING/PONG heartbeat</div><div style="flex:1.2;color:#9AA7B4">Keep-alive through NAT and firewalls</div></div>
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">Reconnect with backoff</div><div style="flex:1.2;color:#9AA7B4">Resilience to transient failure</div></div>
+<div style="display:flex;gap:24px;padding:14px 0;border-bottom:1px solid #263040"><div style="flex:1;color:#F0F6FC">Sliding-window chunk ACK</div><div style="flex:1.2;color:#9AA7B4">Flow control, retransmission, resume</div></div>
+<div style="display:flex;gap:24px;padding:14px 0"><div style="flex:1;color:#F0F6FC">Token-bucket limiter</div><div style="flex:1.2;color:#9AA7B4">DoS mitigation and QoS</div></div>
+</div></div>
+</section>
+
+<section id="numbers" style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">Benchmark</div>
+<h2>Measured, not claimed</h2>
+<p style="max-width:720px">Sample run on loopback with a single event loop, from <span class="mono">scripts/bench.py</span>.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:24px">
+<div class="card"><div class="mono" style="font-size:32px;color:#3DDC97">8 ms</div><p style="margin-top:6px">to open 101 connections</p></div>
+<div class="card"><div class="mono" style="font-size:32px;color:#3DDC97">~3,000/s</div><p style="margin-top:6px">authentications</p></div>
+<div class="card"><div class="mono" style="font-size:32px;color:#3DDC97">~21,700/s</div><p style="margin-top:6px">messages relayed</p></div>
+<div class="card"><div class="mono" style="font-size:32px;color:#3DDC97">4.2 ms</div><p style="margin-top:6px">median RTT (p99 4.6 ms)</p></div>
+</div>
+</section>
+
+<section id="demo" style="max-width:1120px;margin:0 auto;padding:56px 32px">
+<div class="lbl">Try it live</div>
+<h2>Send a frame and attack it</h2>
+<p style="max-width:760px">An in-browser simulation of the CSCP frame format and the E2EE scheme (key agreement, HKDF-SHA256, AES-256-GCM), run with your browser's own crypto. It is a simulation of the logic, not the real server, which speaks mutual TLS over raw TCP.</p>
+<div class="card" style="margin-top:24px">
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:end">
+<label style="flex:1;min-width:240px;font-size:14px;color:#9AA7B4">Message from Alice to Bob<input id="simMsg" type="text" value="Meet at the library at 5" maxlength="120" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:12px;background:#0D1117;border:1px solid #3A475A;border-radius:8px;color:#F0F6FC;font:inherit"></label>
+<fieldset style="border:1px solid #3A475A;border-radius:8px;padding:8px 14px;margin:0;color:#C9D1D9;font-size:14px"><legend style="padding:0 6px;color:#9AA7B4">Mode</legend>
+<label style="margin-right:14px"><input type="radio" name="simMode" value="plain"> Insecure (plain)</label>
+<label><input type="radio" name="simMode" value="secure" checked> Secure (E2EE)</label></fieldset>
+</div>
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
+<button id="simSend" class="sb" style="background:#3DDC97;color:#0D1117;border-color:#3DDC97">Send frame</button>
+<button id="simTamper" class="sb">Tamper 1 byte</button>
+<button id="simTamperFix" class="sb">Tamper and fix CRC</button>
+<button id="simReplay" class="sb">Replay last frame</button>
+</div>
+<div class="lbl" style="margin-top:24px">Frame on the wire (hex)</div>
+<div id="simHex" class="mono" style="margin-top:8px;word-break:break-all;line-height:1.7;font-size:14px;background:#010409;border:1px solid #263040;border-radius:8px;padding:14px;min-height:48px">Press Send frame.</div>
+<div id="simKey" class="mono" style="margin-top:8px;font-size:12px;color:#8B98A5"></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px">
+<div><div class="lbl">What an eavesdropper reads</div><div id="simEve" class="mono" style="margin-top:8px;font-size:14px;background:#010409;border:1px solid #263040;border-radius:8px;padding:14px;min-height:48px;word-break:break-all">-</div></div>
+<div><div class="lbl">What Bob's server-side check says</div><div id="simLog" class="mono" role="log" aria-live="polite" style="margin-top:8px;font-size:14px;background:#010409;border:1px solid #263040;border-radius:8px;padding:14px;min-height:48px">-</div></div>
+</div>
+</div>
+</section>
+
+<section id="run" style="max-width:1120px;margin:0 auto;padding:56px 32px 72px">
+<div class="lbl">Try it</div>
+<h2>Up and running in two commands</h2>
+<pre class="mono" style="margin:24px 0 0;background:#010409;border:1px solid #263040;border-radius:10px;padding:24px;font-size:15px;line-height:1.8;color:#C9D1D9;overflow-x:auto">git clone https://github.com/Aesha-singh/campus-secure-messaging
+cd campus-secure-messaging
+make up              # TLS 1.3 server on :9443, admin on :9444
+make client-stack    # open twice, log in as alice and bob
+                     # password: campus-demo1</pre>
+<p style="margin-top:16px">Stack: Python 3.12, asyncio, SQLite, cryptography, argon2, PyQt6, Docker.</p>
+</section>
+
+<footer style="border-top:1px solid #263040">
+<div style="max-width:1120px;margin:0 auto;padding:28px 32px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:14px;color:#8B98A5"><span>Built by Aesha Singh · Computer Networks, VIT Vellore</span><a href="https://github.com/Aesha-singh/campus-secure-messaging">github.com/Aesha-singh/campus-secure-messaging</a></div>
+</footer>
+</div>
+
+<style>.sb{background:#151B23;color:#F0F6FC;border:1px solid #3A475A;border-radius:8px;padding:12px 18px;font:inherit;font-weight:500;cursor:pointer;min-height:44px}.sb:hover{border-color:#3DDC97}.f-m{color:#7CC4FF}.f-v{color:#C4A7FF}.f-t{color:#FFB86B}.f-f{color:#FF8FA3}.f-l{color:#FFE066}.f-s{color:#6EE7F9}.f-p{color:#3DDC97}.f-c{color:#FF7A7A}</style>
+<script>
+(function(){
+var te=new TextEncoder(),td=new TextDecoder(),S=crypto.subtle;
+var tbl=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);tbl[n]=c>>>0}
+function crc32(b){var c=0xFFFFFFFF;for(var i=0;i<b.length;i++)c=tbl[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function esc(s){return String(s).replace(/[&<>"]/g,function(ch){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]})}
+function hex(b){return Array.prototype.map.call(b,function(x){return('0'+x.toString(16)).slice(-2)}).join(' ')}
+var seq=0,lastSeq=0,lastFrame=null,aesKey=null,keyNote='';
+function $(i){return document.getElementById(i)}
+function mode(){return document.querySelector('input[name=simMode]:checked').value}
+async function initKeys(){
+ var alg='X25519',a,b;
+ try{a=await S.generateKey({name:'X25519'},true,['deriveBits']);b=await S.generateKey({name:'X25519'},true,['deriveBits'])}
+ catch(e){alg='ECDH P-256 (fallback, no X25519 in this browser)';var p={name:'ECDH',namedCurve:'P-256'};a=await S.generateKey(p,true,['deriveBits']);b=await S.generateKey(p,true,['deriveBits'])}
+ var pa=alg==='X25519'?{name:'X25519',public:b.publicKey}:{name:'ECDH',public:b.publicKey};
+ var bits=await S.deriveBits(pa,a.privateKey,256);
+ var hk=await S.importKey('raw',bits,'HKDF',false,['deriveKey']);
+ aesKey=await S.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(32),info:te.encode('cscp-e2ee-sim')},hk,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+ keyNote='Key agreement: '+alg+' then HKDF-SHA256 then AES-256-GCM (ratchet omitted in this simulation)';
+ $('simKey').textContent=keyNote;
+}
+function build(type,flags,seqN,payload){
+ var f=new Uint8Array(24+payload.length),v=new DataView(f.buffer);
+ f.set(te.encode('CSCP'),0);f[4]=1;f[5]=type;v.setUint16(6,flags);v.setUint32(8,payload.length);v.setBigUint64(12,BigInt(seqN));
+ f.set(payload,20);v.setUint32(20+payload.length,crc32(f.subarray(0,20+payload.length)));return f}
+function show(f){
+ var n=f.length,pl=n-24,h=function(a,b,c){return'<span class="'+c+'">'+hex(f.subarray(a,b))+'</span>'};
+ $('simHex').innerHTML=h(0,4,'f-m')+' '+h(4,5,'f-v')+' '+h(5,6,'f-t')+' '+h(6,8,'f-f')+' '+h(8,12,'f-l')+' '+h(12,20,'f-s')+' '+h(20,20+pl,'f-p')+' '+h(20+pl,n,'f-c')+
+ '<div style="margin-top:10px;font-size:12px;color:#8B98A5"><span class="f-m">magic</span> <span class="f-v">ver</span> <span class="f-t">type</span> <span class="f-f">flags</span> <span class="f-l">length</span> <span class="f-s">sequence</span> <span class="f-p">payload</span> <span class="f-c">crc32</span></div>';
+ var p=f.subarray(20,20+pl),s='';for(var i=0;i<p.length;i++){s+=(p[i]>=32&&p[i]<127)?String.fromCharCode(p[i]):'\u00b7'}
+ $('simEve').textContent=s}
+async function receive(f){
+ var v=new DataView(f.buffer,f.byteOffset,f.byteLength);
+ if(td.decode(f.subarray(0,4))!=='CSCP')return{ok:false,t:'Rejected: bad magic bytes.'};
+ var len=v.getUint32(8);if(24+len!==f.length)return{ok:false,t:'Rejected: length field does not match frame size.'};
+ if(crc32(f.subarray(0,20+len))!==v.getUint32(20+len))return{ok:false,t:'Rejected: CRC32 mismatch, frame corrupted in transit.'};
+ var sq=Number(v.getBigUint64(12));if(sq<=lastSeq)return{ok:false,t:'Rejected: sequence '+sq+' is not newer than '+lastSeq+' (replay guard).'};
+ var p=f.subarray(20,20+len),txt;
+ if(v.getUint16(6)&2){try{var pt=await S.decrypt({name:'AES-GCM',iv:p.subarray(0,12)},aesKey,p.subarray(12));txt=td.decode(pt)}catch(e){return{ok:false,t:'Rejected: AES-GCM authentication tag failed. Content was altered.'}}}
+ else txt=td.decode(p);
+ lastSeq=sq;var m;try{m=JSON.parse(txt).text}catch(e){m=txt}
+ return{ok:true,t:'Accepted. Bob reads: "'+m+'"'}}
+function log(r){var d=$('simLog');d.innerHTML='<span style="color:'+(r.ok?'#3DDC97':'#FF7A7A')+'">'+esc(r.t)+'</span>'}
+async function send(){
+ var msg=$('simMsg').value||'hello',j=te.encode(JSON.stringify({to:'bob',text:msg})),payload,flags=0;
+ if(mode()==='secure'){var iv=crypto.getRandomValues(new Uint8Array(12)),ct=new Uint8Array(await S.encrypt({name:'AES-GCM',iv:iv},aesKey,j));payload=new Uint8Array(12+ct.length);payload.set(iv);payload.set(ct,12);flags=2}else payload=j;
+ seq++;lastFrame=build(0x10,flags,seq,payload);show(lastFrame);log(await receive(lastFrame))}
+function tamper(fix){
+ if(!lastFrame){log({ok:false,t:'Send a frame first.'});return}
+ var f=new Uint8Array(lastFrame),len=f.length-24;f[20+Math.min(len-1,Math.floor(len/2))]^=1;
+ if(fix){var v=new DataView(f.buffer);v.setUint32(20+len,crc32(f.subarray(0,20+len)))}
+ show(f);receive(f).then(function(r){
+  if(r.ok&&mode()==='plain')r.t+='  (accepted, but the content was silently changed: plain mode has no authentication)';
+  log(r)})}
+$('simSend').onclick=send;$('simTamper').onclick=function(){tamper(false)};$('simTamperFix').onclick=function(){tamper(true)};
+$('simReplay').onclick=async function(){if(!lastFrame){log({ok:false,t:'Send a frame first.'});return}show(lastFrame);log(await receive(lastFrame))};
+if(!window.crypto||!S){$('simLog').textContent='This browser has no Web Crypto support, so the demo is unavailable.'}else initKeys().catch(function(){$('simLog').textContent='Could not set up keys in this browser.'});
+})();
+</script>
+
+</body>
+</html>
