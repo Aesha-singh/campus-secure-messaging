@@ -1,5 +1,8 @@
 # Campus Secure Messaging & File Sharing System
 
+   **Live site and interactive demo:** https://aesha-singh.github.io/campus-secure-messaging/
+
+
 A secure, real-time messaging and file-sharing system for a university campus
 (~thousands of users, LAN/WAN), built around **CSCP** — Campus Secure Comm
 Protocol — a custom binary application-layer protocol over TLS 1.3.
@@ -145,3 +148,5 @@ environment files.
 Attack-lab material (ARP spoof / MITM / replay / brute-force) is documented
 **for execution on your own isolated lab machine only**. Never run it against
 networks or hosts you do not own.
+
+
